@@ -18,8 +18,9 @@ From `$ARGUMENTS`:
 - `--repo PATH` → target repo (default: current working directory).
 
 Create the run directory: `RUN_DIR=<repo>/.driftguard/runs/<UTC-timestamp>` (`mkdir -p`).
-All context artifacts go there. `PLUGIN_SCRIPTS` = the `scripts/` directory of this plugin
-(resolve from this file's location).
+All context artifacts go there. `PLUGIN_SCRIPTS` = `${CLAUDE_PLUGIN_ROOT}/scripts`
+(if `CLAUDE_PLUGIN_ROOT` is unset, resolve the `scripts/` directory from this command
+file's installed location).
 
 ## 1. Gather context (scripts, in parallel where possible)
 

@@ -1,0 +1,13 @@
+{
+  "name": "driftguard",
+  "owner": {
+    "name": "paritosh"
+  },
+  "plugins": [
+    {
+      "name": "driftguard",
+      "source": "./",
+      "description": "Reviews a PR or branch against what it was asked to build — reconstructed from the plan/spec, the Claude session that produced it, and the git development history."
+    }
+  ]
+}

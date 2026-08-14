@@ -17,12 +17,20 @@ Existing AI reviewers ask *"is this code correct?"* driftguard asks
 
 ## Install
 
-```bash
-# from the marketplace-style local path, inside Claude Code:
-/plugin install /path/to/drift_guard
+Inside **any** Claude Code session, straight from GitHub:
+
+```
+/plugin marketplace add pparitoshh/driftguard
+/plugin install driftguard@driftguard
 ```
 
-or copy this directory into your project's `.claude/plugins/`.
+(The repo root doubles as a marketplace via `.claude-plugin/marketplace.json`.)
+
+Local alternative: clone this repo and either copy it into your project's
+`.claude/plugins/` or point `/plugin marketplace add /path/to/driftguard` at it.
+
+Requirements on the target machine: `git`, `python3` (3.11+, stdlib only), and
+`gh` (only for PR-number mode — branch mode works without it).
 
 ## Usage
 
