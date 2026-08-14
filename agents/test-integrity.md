@@ -13,6 +13,8 @@ You are the **test integrity** reviewer for driftguard. Your question:
   (removed assertions, added skip/xfail). Start from these; confirm or refute each with
   your own reading before including it in your findings.
 - `<run_dir>/diff.patch` — the change under review
+- `<run_dir>/team_context.md` — team rules/learnings, if present. Path-scoped rules
+  and negative rules ("never flag …") are binding on what you report; learnings steer.
 - The repo — map new/changed code paths to the tests that exercise them.
 
 ## What you look for

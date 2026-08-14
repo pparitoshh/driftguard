@@ -33,7 +33,9 @@ Local alternative: clone this repo and either copy it into your project's
 `.claude/plugins/` or point `/plugin marketplace add /path/to/driftguard` at it.
 
 Requirements on the target machine: `git`, `python3` (3.11+, stdlib only), and
-`gh` (only for PR-number mode — branch mode works without it).
+`gh` (only for PR-number mode — branch mode works without it). Network access is
+used only for the PyPI/npm/OSV registry checks; offline they degrade to
+"check skipped", never to a crash.
 
 ## Usage
 
@@ -46,6 +48,31 @@ Requirements on the target machine: `git`, `python3` (3.11+, stdlib only), and
 
 Everything runs inside your Claude Code session. No API keys, no servers, no
 embeddings, no Docker. Code never leaves your machine.
+
+A review ends with a fix-loop handoff — say **"fix findings 1-3"** and the same
+session addresses them (no separate autofix bot needed; the reviewer *is* your
+coding agent).
+
+## Personalize it (plain files, no dashboard)
+
+Like Greptile/CodeRabbit custom rules and learnings — but as markdown in your repo:
+
+- **`.driftguard/rules.md`** — standing review rules in plain English. Binding on
+  every subagent. Supports path scoping and negative rules (filters):
+
+  ```markdown
+  # Rules
+  Every new endpoint must have an auth check.
+
+  ## path: scripts/**
+  Never flag shell=True here — these are local dev tools.
+  ```
+
+- **`.driftguard/learnings.md`** — append-only memory, one dated line per
+  preference. Written by `/driftguard:learn "..."` (credentials are redacted
+  before writing). Steers findings; never suppresses Tier 0 errors.
+- **Auto-detected guidelines** — `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, and
+  `.github/copilot-instructions.md` are picked up automatically.
 
 ## How it works
 
@@ -77,6 +104,12 @@ embeddings, no Docker. Code never leaves your machine.
 No RAG: the per-review corpus is small and well-scoped by construction
 (deterministic pre-filtering + subagent context isolation). An optional BM25
 ranker is specced as a fallback only and is not shipped.
+
+Every review returns the same shape: **verdict** (pass / review_needed / blocked),
+**risk + review-effort** from the triage card, a **walkthrough** table of what
+changed per file (sensitive paths first), severity- and category-tagged
+**findings** with tool evidence and a concrete action each, and a mandatory
+**"Not checked"** section listing everything the review did not verify.
 
 ## Prior art, honestly
 

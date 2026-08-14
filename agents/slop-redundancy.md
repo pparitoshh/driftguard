@@ -15,6 +15,8 @@ duplication and over-abstraction are the default, not the exception.
 - `<run_dir>/history.json` — per-file prior churn (a file touched many times recently
   is a slop magnet)
 - `<run_dir>/session.md` — session digest, if present
+- `<run_dir>/team_context.md` — team rules/learnings, if present. Path-scoped rules
+  and negative rules ("never flag …") are binding on what you report; learnings steer.
 
 ## What you look for
 
