@@ -27,16 +27,26 @@ file's installed location).
 ```bash
 python3 $PLUGIN_SCRIPTS/plan_resolve.py  --repo <repo> [--pr N] [--base B --head H] [--task "..."] > $RUN_DIR/plan.json
 python3 $PLUGIN_SCRIPTS/dev_history.py   --repo <repo> --base B --head H [--pr N]                  > $RUN_DIR/history.json
+python3 $PLUGIN_SCRIPTS/risk_score.py    --repo <repo> --base B --head H                           > $RUN_DIR/risk.json
 git -C <repo> diff B...H > $RUN_DIR/diff.patch
 ```
 
-Then read `history.json` and feed its `range_start` / `range_end` / `changed_files` into
-the session extractor:
+Then read `history.json` and feed its `range_start` / `range_end` / `changed_files`
+into the session extractor, and `changed_files` into team context (path-scoped rules):
 
 ```bash
 python3 $PLUGIN_SCRIPTS/session_extract.py --repo <repo> --since <range_start> --until <range_end> \
     --files <comma-separated changed files> > $RUN_DIR/session.md
+python3 $PLUGIN_SCRIPTS/team_context.py --repo <repo> --files <comma-separated changed files> \
+    | python3 -c "import json,sys; print(json.load(sys.stdin)['markdown'])" > $RUN_DIR/team_context.md
 ```
+
+`team_context.md` carries `.driftguard/rules.md` (plain-English custom rules,
+path-scoped sections, negative rules = filters), `.driftguard/learnings.md`
+(preferences recorded via /driftguard:learn), and auto-detected guideline files
+(CLAUDE.md / AGENTS.md / .cursorrules / copilot-instructions.md). Rules and negative
+rules are **binding** on every subagent; learnings steer but never suppress Tier 0
+`error` findings.
 
 If a script reports `skipped` or errors, note it in `not_checked` and continue — context
 sources are enrichment, never blockers. The plan resolution chain always resolves to
@@ -44,38 +54,45 @@ sources are enrichment, never blockers. The plan resolution chain always resolve
 
 ## 2. Tier 0 — deterministic pre-flight (no LLM)
 
-Run all four, in parallel:
+Run all six, in parallel:
 
 ```bash
 python3 $PLUGIN_SCRIPTS/preflight/deps_check.py       --repo <repo> --base B --head H > $RUN_DIR/t0_deps.json
+python3 $PLUGIN_SCRIPTS/preflight/secrets_scan.py     --repo <repo> --base B --head H > $RUN_DIR/t0_secrets.json
+python3 $PLUGIN_SCRIPTS/preflight/osv_check.py        --repo <repo> --base B --head H > $RUN_DIR/t0_osv.json
 python3 $PLUGIN_SCRIPTS/preflight/run_linters.py      --repo <repo> --base B --head H > $RUN_DIR/t0_linters.json
 python3 $PLUGIN_SCRIPTS/preflight/dead_code.py        --repo <repo> --base B --head H > $RUN_DIR/t0_deadcode.json
 python3 $PLUGIN_SCRIPTS/preflight/test_subversion.py  --repo <repo> --base B --head H > $RUN_DIR/t0_tests.json
 ```
 
-Findings here are already evidence-backed. `error` severity findings (e.g. a dependency
-that does not exist on PyPI) are blockers by default.
+Findings here are already evidence-backed. `error` severity findings (a dependency
+that does not exist on PyPI/npm, a live credential, a known-vulnerable pinned dep)
+are blockers by default.
 
 ## 3. Tier 1 — fan out review subagents (Task tool, in parallel)
 
-Launch all four subagents in ONE message, passing each: the run directory path, the repo
-path, and the diff range. Each subagent reads `$RUN_DIR/plan.json`, `$RUN_DIR/session.md`,
-`$RUN_DIR/diff.patch`, `history.json` and drills into the repo itself with Read/Grep/Bash:
+Launch all five subagents in ONE message, passing each: the run directory path, the
+repo path, and the diff range. Each subagent reads `$RUN_DIR/plan.json`,
+`$RUN_DIR/session.md`, `$RUN_DIR/diff.patch`, `history.json`, `team_context.md` and
+drills into the repo itself with Read/Grep/Bash:
 
 - `driftguard:intent-scope` — was the plan built, and only the plan?
 - `driftguard:slop-redundancy` — more code than the task needs?
 - `driftguard:regression-contract` — broken callers, contract drift?
 - `driftguard:test-integrity` — coverage of new paths, weakened tests (fuses with t0_tests.json)?
+- `driftguard:security` — holes introduced by the change (fuses with t0_secrets.json / t0_osv.json)?
 
 ## 4. Synthesize + noise control (deterministic rules, apply strictly)
 
 1. Merge Tier 0 + subagent findings.
 2. **Dedup**: same file + overlapping line range → one finding (keep highest severity,
    merge evidence lists).
-3. **Evidence filter**: DROP any finding whose `evidence` list is empty or asserts a file
-   fact you cannot point to. Do not soften — drop.
+3. **Evidence filter**: DROP any finding whose `evidence` list is empty or asserts a
+   file fact you cannot point to. Do not soften — drop.
 4. **Vagueness filter**: DROP findings without file + line + concrete `suggested_action`.
-5. **Budget**: cap at 10 findings, severity-ranked. Summarise the tail in one sentence.
+5. **Rules filter**: DROP findings that contradict a negative rule in team_context.md.
+6. **Budget**: cap at 10 findings, severity-ranked (error > warning > info).
+   Summarise the tail in one sentence.
 
 ## 5. Output contract (exactly this shape)
 
@@ -84,12 +101,18 @@ path, and the diff range. Each subagent reads `$RUN_DIR/plan.json`, `$RUN_DIR/se
 
 **Checked against:** <which plan source won: pr-body | linked-issue | plan-doc | commits | branch-name | task-flag>
 **Verdict:** pass | review_needed | blocked
+**Risk:** <low|medium|high from risk.json> · **Review effort:** <estimate> · <N files, M lines>
+
+### Walkthrough
+| File | +/- | Kind | What changed |
+|---|---|---|---|
+| `path` | +a/-d | code/test/docs/manifest | one line (sensitive paths first — use risk.json's suggested_review_order) |
 
 ### Summary
 <plain-language: what was built, and whether it matches what was asked>
 
 ### Findings
-1. **[severity]** `file:line-range` — claim
+1. **[severity][category]** `file:line-range` — claim
    - Evidence: <tool/script output>
    - Action: <concrete fix>
 
@@ -99,3 +122,9 @@ path, and the diff range. Each subagent reads `$RUN_DIR/plan.json`, `$RUN_DIR/se
 
 A `pass` verdict without a populated "Not checked" section is a contract violation —
 a green review must not license skipping human scrutiny.
+
+Close with one line:
+
+> Findings are evidence-linked above. Say **"fix findings 1-3"** and this session will
+> address them; correct a finding and say **"/driftguard:learn ..."** to make the
+> correction permanent for future reviews.

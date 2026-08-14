@@ -226,28 +226,39 @@ point.
 
 ## 13. Repository layout
 
+> v0.2 update (see `driftguard-market-parity-plan.md`): added `commands/learn.md`,
+> `agents/security.md`, `scripts/risk_score.py`, `scripts/team_context.py`, and
+> `scripts/preflight/{secrets_scan,osv_check}.py`; `deps_check.py` covers npm,
+> `run_linters.py` covers local eslint.
+
 ```
 driftguard/
 ├── .claude-plugin/plugin.json    # manifest
 ├── README.md                     # incl. prior-art table + honest caveat
 ├── commands/
-│   └── review.md                 # /driftguard:review orchestration
+│   ├── review.md                 # /driftguard:review orchestration
+│   └── learn.md                  # /driftguard:learn — persistent review memory (v0.2)
 ├── agents/                       # Tier 1 subagents
 │   ├── intent-scope.md
 │   ├── slop-redundancy.md
 │   ├── regression-contract.md
-│   └── test-integrity.md
+│   ├── test-integrity.md
+│   └── security.md               # holes introduced by the diff (v0.2)
 ├── scripts/
 │   ├── plan_resolve.py           # source 1: resolution chain
 │   ├── session_extract.py        # source 2: transcript digest
 │   ├── dev_history.py            # source 3: git/gh history
+│   ├── risk_score.py             # deterministic triage card (v0.2)
+│   ├── team_context.py           # rules + learnings + guidelines (v0.2)
 │   ├── bm25_rank.py              # optional, only if needed
 │   └── preflight/
-│       ├── deps_check.py
-│       ├── run_linters.py
+│       ├── deps_check.py         # PyPI + npm (npm added v0.2)
+│       ├── secrets_scan.py       # committed credentials, redacted evidence (v0.2)
+│       ├── osv_check.py          # known-CVE pinned deps via OSV.dev (v0.2)
+│       ├── run_linters.py        # ruff + local eslint (eslint added v0.2)
 │       ├── dead_code.py
 │       └── test_subversion.py
-├── tests/                        # pytest for scripts
+├── tests/                        # unittest for scripts
 └── evals/                        # fixture repos + results.md
 ```
 

@@ -12,9 +12,13 @@ Fixture: `evals/build_fixtures.py` (task: "add a discount flag to total()").
 | 4 | assertion removed + `@pytest.mark.skip` added, code changed same diff | test_subversion **error** + warning | ✅ both fired |
 | 5 | one-caller `DiscountStrategy` class | subagent (slop) | not run in CI — host fan-out only |
 | 6 | unrequested `currency.py` feature | subagent (intent) | not run in CI — host fan-out only |
+| 7 | `AKIAIOSFODNN7EXAMPLE` (AWS example key) in `auth/config.py` | secrets_scan **error**, redacted evidence | ✅ error, `auth/config.py:1`, evidence shows `AKIA…` only |
+| 8 | `requests==2.19.0` pinned in requirements.txt | osv_check **error** | ✅ error — OSV reports 10 vulns (incl. CVE-2018-18074); live API |
+| 9 | `auth/` path changed, manifest changed | risk_score elevation | ✅ medium (score 4), `auth/config.py` first in review order |
 
-Tier 0 determinism: **4/4 deterministic planted issues caught, 0 false positives** on the
+Tier 0 determinism: **6/6 deterministic planted issues caught, 0 false positives** on the
 clean base commit range. Subagent-detected issues (5, 6) are exercised in live runs below.
+Checks 7–9 added in v0.2 (market-parity wave, see `driftguard-market-parity-plan.md`).
 
 ## Live run — ai-chef `d2fa888...286ce95` ("feat: orchestrate ingestion with Prefect")
 

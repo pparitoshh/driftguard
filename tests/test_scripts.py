@@ -193,5 +193,73 @@ class TestSessionExtract(RepoTestCase):
         self.assertIn("truncated", out)
 
 
+class TestRiskScore(RepoTestCase):
+    def test_sensitive_path_plus_test_gap_elevates_risk(self):
+        self.commit_file("auth/login.py", "def login():\n    return True\n", "base")
+        self.commit_file("auth/login.py",
+                         "def login(u, p):\n    return check(u, p)\n" * 30,
+                         "rework login", "2026-08-02T10:00:00+00:00")
+        out = run_script("risk_score.py", "--repo", str(self.repo),
+                         "--base", "HEAD~1", "--head", "HEAD")
+        self.assertIn(out["risk_level"], ("medium", "high"))
+        self.assertTrue(out["totals"]["test_gap"])
+        self.assertEqual(out["totals"]["sensitive_files"], 1)
+        self.assertEqual(out["suggested_review_order"][0], "auth/login.py")
+        self.assertTrue(any("sensitive" in b for b in out["score_breakdown"]))
+
+    def test_docs_only_change_is_low_risk(self):
+        self.commit_file("README.md", "# t\n", "base")
+        self.commit_file("README.md", "# t\n\nmore docs\n", "docs",
+                         "2026-08-02T10:00:00+00:00")
+        out = run_script("risk_score.py", "--repo", str(self.repo),
+                         "--base", "HEAD~1", "--head", "HEAD")
+        self.assertEqual(out["risk_level"], "low")
+        self.assertFalse(out["totals"]["test_gap"])
+        self.assertEqual(out["files"][0]["kind"], "docs")
+
+    def test_hotspot_churn_adds_points(self):
+        for i in range(9):
+            self.commit_file("hot.py", f"x = {i}\n", f"v{i}",
+                             f"2026-08-0{1 + i % 8}T10:00:00+00:00")
+        self.commit_file("hot.py", "x = 99\n", "change hot file",
+                         "2026-08-12T10:00:00+00:00")
+        out = run_script("risk_score.py", "--repo", str(self.repo),
+                         "--base", "HEAD~1", "--head", "HEAD")
+        self.assertTrue(any("hotspot" in b for b in out["score_breakdown"]),
+                        out["score_breakdown"])
+
+
+class TestTeamContext(RepoTestCase):
+    def test_empty_repo_reports_none(self):
+        out = run_script("team_context.py", "--repo", str(self.repo))
+        self.assertEqual(out["sources"], [])
+        self.assertIn("No team context", out["markdown"])
+
+    def test_rules_learnings_guidelines_collected(self):
+        (self.repo / ".driftguard").mkdir()
+        (self.repo / ".driftguard" / "rules.md").write_text(
+            "# Rules\nAlways require tests.\n\n## path: src/**\nNever flag shell=True.\n")
+        (self.repo / ".driftguard" / "learnings.md").write_text(
+            "- [2026-08-01] prefer early returns, the why: debuggability\n")
+        (self.repo / "CLAUDE.md").write_text("# Guidelines\nUse stdlib only.\n")
+        out = run_script("team_context.py", "--repo", str(self.repo),
+                         "--files", "src/auth/login.py")
+        kinds = {s["kind"] for s in out["sources"]}
+        self.assertEqual(kinds, {"custom-rules", "learnings", "guidelines"})
+        self.assertIn("Always require tests", out["markdown"])
+        self.assertIn("Never flag shell=True", out["markdown"])   # path matches src/**
+        self.assertIn("prefer early returns", out["markdown"])
+        self.assertIn("stdlib only", out["markdown"])
+
+    def test_path_scoped_rules_excluded_when_no_match(self):
+        (self.repo / ".driftguard").mkdir()
+        (self.repo / ".driftguard" / "rules.md").write_text(
+            "# Rules\nGlobal rule.\n\n## path: src/**\nSrc-only rule.\n")
+        out = run_script("team_context.py", "--repo", str(self.repo),
+                         "--files", "docs/guide.md")
+        self.assertIn("Global rule", out["markdown"])
+        self.assertNotIn("Src-only rule", out["markdown"])
+
+
 if __name__ == "__main__":
     unittest.main()

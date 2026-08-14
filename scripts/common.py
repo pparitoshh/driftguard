@@ -5,6 +5,8 @@ import json
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 
@@ -37,16 +39,47 @@ def emit(obj: dict) -> None:
 
 
 def finding(source: str, severity: str, file: str, line_range: str,
-            claim: str, evidence: list[str], action: str) -> dict:
+            claim: str, evidence: list[str], action: str,
+            category: str = "") -> dict:
     return {
         "source": source,
         "severity": severity,
+        "category": category,
         "file": file,
         "line_range": line_range,
         "claim": claim,
         "evidence": evidence,
         "suggested_action": action,
     }
+
+
+def http_json(url: str, timeout: int = 4) -> tuple[int | None, dict | None]:
+    """GET a JSON URL. Returns (status, parsed) or (None, None) when unreachable."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        return e.code, None
+    except (urllib.error.URLError, OSError, json.JSONDecodeError):
+        return None, None
+
+
+def http_post_json(url: str, payload: dict, timeout: int = 4) -> dict | None:
+    """POST JSON, return parsed response; None on any failure."""
+    try:
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, json.JSONDecodeError):
+        return None
+
+
+def redact(text: str, keep: int = 4) -> str:
+    """Redact a secret for evidence output: first `keep` chars + ellipsis."""
+    text = text.strip()
+    return text[:keep] + "…" if len(text) > keep else "…"
 
 
 def resolve_range(repo: Path, base: str | None, head: str | None) -> tuple[str, str]:

@@ -8,6 +8,9 @@ Planted issues (the golden expectations live in results.md):
   4. assertion removed + skip added while code changed     -> tier0:test_subversion error/warning
   5. one-caller abstraction (unrequested scope + slop)     -> subagent findings
   6. unrequested feature file                              -> intent-scope subagent finding
+  7. committed AWS-shaped credential (public example key)  -> tier0:secrets_scan error
+  8. pinned known-vulnerable dep (requests==2.19.0)        -> tier0:osv_check error (online)
+  9. auth-path change with no tests                        -> risk_score elevation
 
 Usage: python3 evals/build_fixtures.py [target_dir]
 Prints the base/head range to review.
@@ -85,6 +88,13 @@ def main() -> None:
           "RATES = {'USD': 1.0, 'EUR': 0.92}\n\n\n"
           "def convert(amount, currency):\n"
           "    return amount * RATES[currency]\n")
+    # planted 7: committed credential (AWS's documented public example key —
+    # matches the format, is not a real secret)
+    write(target, "auth/config.py",
+          'AWS_ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"\n')
+    # planted 8: pinned known-vulnerable dependency (CVE-2018-18074)
+    write(target, "requirements.txt", "requests==2.19.0\n")
+    # planted 9 (implicit): auth/ path changed in this diff with no new tests
     git(target, "add", "-A", date="2026-08-02T10:00:00+00:00")
     git(target, "commit", "-m", "feat: add discount flag to total()",
         date="2026-08-02T10:01:00+00:00")
