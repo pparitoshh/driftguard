@@ -1,0 +1,10 @@
+{
+  "name": "driftguard",
+  "version": "0.1.0",
+  "description": "Reviews a PR or branch against what it was asked to build — reconstructed from the plan/spec, the Claude session that produced it, and the git development history.",
+  "author": {
+    "name": "paritosh"
+  },
+  "keywords": ["review", "intent-drift", "slop", "ai-generated-code"],
+  "license": "MIT"
+}
