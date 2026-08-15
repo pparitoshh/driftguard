@@ -18,7 +18,7 @@ Fixture: `evals/build_fixtures.py` (task: "add a discount flag to total()").
 
 Tier 0 determinism: **6/6 deterministic planted issues caught, 0 false positives** on the
 clean base commit range. Subagent-detected issues (5, 6) are exercised in live runs below.
-Checks 7–9 added in v0.2 (market-parity wave, see `driftguard-market-parity-plan.md`).
+Checks 7–9 added in the v0.2 market-parity wave.
 
 ## DS fixture repo (data-scientist role) — Tier 0 determinism
 

@@ -187,10 +187,7 @@ python3 evals/build_fixtures.py /tmp/ds --set ds         # data-scientist fixtur
 ```
 
 Layout: `commands/` (slash commands), `agents/` (Tier 1 subagents),
-`scripts/` (context + Tier 0, stdlib-only Python), `evals/` (fixtures + results),
-`driftguard-implementation-plan_1.md` (the design doc),
-`driftguard-role-review-plan.md` (the v0.3 role-based review design),
-`driftguard-market-parity-plan.md` (v0.2 upgrade analysis).
+`scripts/` (context + Tier 0, stdlib-only Python), `evals/` (fixtures + results).
 
 ## Out of scope
 
