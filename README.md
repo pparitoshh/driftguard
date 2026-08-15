@@ -43,6 +43,7 @@ used only for the PyPI/npm/OSV registry checks; offline they degrade to
 /driftguard:review 123                 # PR number — context via `gh`
 /driftguard:review --base main         # local branch vs. base, no PR needed
 /driftguard:review --task "..."        # explicit task statement override
+/driftguard:review --role ds           # data-scientist review (skips the role question)
 /driftguard:learn "prefer early returns in auth code — easier to debug in prod"
 ```
 
@@ -74,6 +75,28 @@ Like Greptile/CodeRabbit custom rules and learnings — but as markdown in your 
 - **Auto-detected guidelines** — `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, and
   `.github/copilot-instructions.md` are picked up automatically.
 
+## Role-based review
+
+Before reviewing, driftguard asks what kind of feature the PR is — **data
+scientist**, **data engineer**, or **other** — hinting at an answer from the
+changed paths and manifests, so confirming takes one keystroke. Pass
+`--role ds|de|other` to skip the question.
+
+`ds` attaches a domain specialist a generalist reviewer can't replace: the code
+can be correct, the plan followed, the tests green, and the NDCG still fake
+because the same user is on both sides of the split. It adds one deterministic
+pre-flight (`ml_patterns.py` — fit-before-split, metrics on train data, label in
+the feature list, tuning before the split, missing seeds) and the **ds-review**
+subagent, which walks a 48-check catalog: split integrity, data leakage,
+training/serving skew, ranking labels and feedback loops, negative sampling and
+loss, evaluation protocol, experiment hygiene, and data audit. Findings are
+tagged `ml-*` and carry stable IDs (`DS-08`), so a rule can suppress one check
+("never flag DS-18 here — position is a deliberate feature"). Every check group
+is listed in the output, clean or not.
+
+`de` is specced but not built yet (v0.4) — it runs as *other* and says so.
+`other` is exactly the generic review, unchanged.
+
 ## How it works
 
 1. **Context assembly (scripts, no LLM)** — plan/spec resolution chain
@@ -88,10 +111,12 @@ Like Greptile/CodeRabbit custom rules and learnings — but as markdown in your 
 2. **Tier 0 deterministic pre-flight** — hallucinated-dependency check against
    PyPI **and npm**, **secrets scan** (redacted evidence), **known-vulnerability
    check** for pinned deps (OSV.dev), repo's own linters (ruff, local eslint),
-   AST dead-code scan, test-subversion diff analysis.
+   AST dead-code scan, test-subversion diff analysis — plus the **ML-methodology
+   scan** (`ml_patterns.py`) when the role is data-scientist.
 3. **Tier 1 subagent fan-out** — intent-scope, slop-redundancy,
    regression-contract, test-integrity, **security** run in parallel, each with
-   its own context window, drilling into the repo with Read/Grep/Bash.
+   its own context window, drilling into the repo with Read/Grep/Bash — plus
+   **ds-review** when the role is data-scientist.
 4. **Noise control** — cross-agent dedup, evidence-mandatory filter (findings
    without tool-derived evidence are *dropped*), team negative-rules filter, hard
    finding budget, and a mandatory "Not checked" section so a green verdict can't
@@ -111,34 +136,40 @@ changed per file (sensitive paths first), severity- and category-tagged
 **findings** with tool evidence and a concrete action each, and a mandatory
 **"Not checked"** section listing everything the review did not verify.
 
-## Prior art, honestly
+## Features
 
-| Tool | What it does better than driftguard |
-|---|---|
-| **Greptile** | Catches more *bugs* — whole-codebase graph index, cross-service seams, sandboxed test execution (TREX) |
-| **CodeRabbit** | 50+ sandboxed linters/SAST, multi-PR triage dashboards, change-stack visualization, more polish |
-| **Qodo Merge** | Cross-repo breaking-change detection, hosted dashboards |
-| **sigma** | Full spec-as-contract pipeline (if you adopt its whole workflow) |
-
-driftguard's claims: **intent as the reference point** (plan + session, not just
-the codebase), **local and free**, **agent-specific detection** — and it is the
-only reviewer that reads the *session transcript* of how the code was produced.
-Since v0.2 it also covers the market's table stakes in lightweight form: secrets
-scan, known-CVE dep check (OSV), npm dep hygiene, security subagent, risk/effort
-triage card, custom rules, and learnings — see `driftguard-market-parity-plan.md`
-for the full adopt/reject analysis. What it still won't do: host your code on
-someone else's servers.
+- **Intent as the reference point** — reviews against the stated plan and the
+  session transcript, not just the codebase. driftguard is the only reviewer
+  that reads the *transcript* of how the code was produced.
+- **Agent-specific detection** — catches the failure modes of AI-written code:
+  overreach beyond the plan, silent scope creep, undoing of earlier decisions.
+- **Local and free** — runs entirely on your machine; your code is never
+  hosted on someone else's servers.
+- **Secrets scan** — detects accidentally committed credentials, with values
+  redacted in output.
+- **Known-CVE dependency check** — queries the free OSV.dev API (no key
+  required).
+- **npm dependency hygiene** — validates imports against `package.json` and
+  the npm registry.
+- **Security subagent** — a dedicated review pass focused on vulnerabilities.
+- **Risk/effort triage card** — every review is scored for risk, complexity,
+  and estimated review effort.
+- **Custom rules and learnings** — plain markdown in your repo, no database.
+- **Role-based review** — a data-scientist role that checks methodology
+  (splits, leakage, ranking evaluation) the way a generalist reviewer can't.
 
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests          # 36 tests, stdlib only
-python3 evals/build_fixtures.py /tmp/fixture   # fixture repo with planted issues
+python3 -m unittest discover -s tests                    # 60 tests, stdlib only
+python3 evals/build_fixtures.py /tmp/fixture             # planted-issue fixture repo
+python3 evals/build_fixtures.py /tmp/ds --set ds         # data-scientist fixture
 ```
 
 Layout: `commands/` (slash commands), `agents/` (Tier 1 subagents),
 `scripts/` (context + Tier 0, stdlib-only Python), `evals/` (fixtures + results),
 `driftguard-implementation-plan_1.md` (the design doc),
+`driftguard-role-review-plan.md` (the v0.3 role-based review design),
 `driftguard-market-parity-plan.md` (v0.2 upgrade analysis).
 
 ## Out of scope

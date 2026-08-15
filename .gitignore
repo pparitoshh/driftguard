@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .driftguard/
 evals/fixture_repo/
+evals/fixture_repo_ds/
