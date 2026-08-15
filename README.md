@@ -17,6 +17,11 @@ Existing AI reviewers ask *"is this code correct?"* driftguard asks
 4. **Security holes introduced by the diff** — committed credentials (evidence
    redacted), pinned deps with known CVEs (OSV.dev), injection/deserialization/authz
    gaps traced by a dedicated security subagent.
+5. **Methodology bugs in ML work** (data-scientist role) — the class of defect where
+   the code is correct, the plan was followed, the tests pass, and the result is
+   still wrong: a leaked split, a metric computed on training data, a feature
+   window that reaches past the prediction timestamp, an NDCG no code in the diff
+   produces.
 
 ## Install
 
@@ -33,8 +38,9 @@ Local alternative: clone this repo and either copy it into your project's
 `.claude/plugins/` or point `/plugin marketplace add /path/to/driftguard` at it.
 
 Requirements on the target machine: `git`, `python3` (3.11+, stdlib only), and
-`gh` (only for PR-number mode — branch mode works without it). Network access is
-used only for the PyPI/npm/OSV registry checks; offline they degrade to
+`gh` (only for PR-number mode — branch mode works without it). The PyPI/npm/OSV
+registry checks are the only thing that would use the network, and they are off
+unless you opt in (see below); disabled or offline, they degrade to
 "check skipped", never to a crash.
 
 ## Usage
