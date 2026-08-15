@@ -87,6 +87,11 @@ python3 $PLUGIN_SCRIPTS/preflight/test_subversion.py  --repo <repo> --base B --h
 python3 $PLUGIN_SCRIPTS/preflight/ml_patterns.py      --repo <repo> --base B --head H > $RUN_DIR/t0_ml.json
 ```
 
+`deps_check` and `osv_check` make outbound requests and are **disabled by default**
+(they run, but skip their network step unless `DRIFTGUARD_ALLOW_NETWORK=1` is set).
+When their JSON reports a `network disabled` skip, copy that verbatim into
+"Not checked" — never present it as a clean result.
+
 Findings here are already evidence-backed. `error` severity findings (a dependency
 that does not exist on PyPI/npm, a live credential, a known-vulnerable pinned dep)
 are blockers by default.

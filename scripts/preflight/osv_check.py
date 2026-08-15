@@ -7,7 +7,8 @@ queried against the free OSV.dev API (no key). Covers what CodeRabbit markets as
 
 Manifests: requirements*.txt, pyproject.toml (PyPI); package.json (npm).
 Only exact pins are checked (`pkg==1.2.3`, `"pkg": "1.2.3"`); ranges are noted as
-unverifiable. Offline -> check skipped.
+unverifiable. Offline, or network disabled by default
+(DRIFTGUARD_ALLOW_NETWORK unset) -> check skipped.
 """
 from __future__ import annotations
 
@@ -17,8 +18,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import (base_argparser, changed_files, diff_added_removed, emit,  # noqa: E402
-                    finding, http_post_json, resolve_range)
+from common import (NETWORK_DISABLED_REASON, base_argparser,  # noqa: E402
+                    changed_files, diff_added_removed, emit, finding,
+                    http_post_json, network_allowed, resolve_range)
 
 OSV_URL = "https://api.osv.dev/v1/query"
 MAX_QUERIES = 20
@@ -107,7 +109,9 @@ def main() -> None:
 
     if offline:
         skipped.append({"check": "osv_check(api)",
-                        "reason": "OSV unreachable — some pinned deps not verified"})
+                        "reason": (NETWORK_DISABLED_REASON if not network_allowed()
+                                   else "OSV unreachable") +
+                        " — some pinned deps not verified"})
     if len(queries) > MAX_QUERIES:
         skipped.append({"check": "osv_check(budget)",
                         "reason": f"+{len(queries) - MAX_QUERIES} deps over query budget"})

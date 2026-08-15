@@ -2,12 +2,27 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+# --- network kill switch -----------------------------------------------------
+# driftguard is offline by default: nothing about your code leaves the machine.
+# The only outbound calls are dependency lookups (PyPI/npm package names) and
+# vulnerability queries (the pinned name+version list, POSTed to OSV.dev) — both
+# reveal parts of your dependency graph, so they are opt-in.
+# Set DRIFTGUARD_ALLOW_NETWORK=1 to enable them.
+NETWORK_ENV_VAR = "DRIFTGUARD_ALLOW_NETWORK"
+NETWORK_DISABLED_REASON = f"network disabled ({NETWORK_ENV_VAR} unset)"
+
+
+def network_allowed() -> bool:
+    """True only when the user explicitly opted in to outbound requests."""
+    return os.environ.get(NETWORK_ENV_VAR, "").strip().lower() in {"1", "true", "yes"}
 
 
 def run(cmd: list[str], cwd: str | Path | None = None, timeout: int = 60) -> str:
@@ -54,7 +69,10 @@ def finding(source: str, severity: str, file: str, line_range: str,
 
 
 def http_json(url: str, timeout: int = 4) -> tuple[int | None, dict | None]:
-    """GET a JSON URL. Returns (status, parsed) or (None, None) when unreachable."""
+    """GET a JSON URL. Returns (status, parsed), or (None, None) when unreachable
+    or when the network kill switch is off (the default)."""
+    if not network_allowed():
+        return None, None
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             return resp.status, json.loads(resp.read().decode("utf-8", "replace"))
@@ -65,7 +83,10 @@ def http_json(url: str, timeout: int = 4) -> tuple[int | None, dict | None]:
 
 
 def http_post_json(url: str, payload: dict, timeout: int = 4) -> dict | None:
-    """POST JSON, return parsed response; None on any failure."""
+    """POST JSON, return parsed response; None on any failure, and None without
+    sending anything when the network kill switch is off (the default)."""
+    if not network_allowed():
+        return None
     try:
         req = urllib.request.Request(
             url, data=json.dumps(payload).encode(),

@@ -50,6 +50,20 @@ used only for the PyPI/npm/OSV registry checks; offline they degrade to
 Everything runs inside your Claude Code session. No API keys, no servers, no
 embeddings, no Docker. Code never leaves your machine.
 
+**Offline by default.** Two checks would otherwise make outbound requests —
+`deps_check` (package names to PyPI/npm) and `osv_check` (pinned name+version
+pairs to OSV.dev). Both reveal part of your dependency graph, so both are off
+unless you opt in:
+
+```bash
+DRIFTGUARD_ALLOW_NETWORK=1 /driftguard:review 123    # enable registry + CVE lookups
+```
+
+Disabled, they report themselves under "Not checked" as
+`network disabled (DRIFTGUARD_ALLOW_NETWORK unset)` — never as a silent pass.
+Every other check (secrets, linters, dead code, test subversion, ML patterns,
+and all subagents) is local-only and unaffected.
+
 A review ends with a fix-loop handoff — say **"fix findings 1-3"** and the same
 session addresses them (no separate autofix bot needed; the reviewer *is* your
 coding agent).
@@ -148,7 +162,7 @@ changed per file (sensitive paths first), severity- and category-tagged
 - **Secrets scan** — detects accidentally committed credentials, with values
   redacted in output.
 - **Known-CVE dependency check** — queries the free OSV.dev API (no key
-  required).
+  required); off unless `DRIFTGUARD_ALLOW_NETWORK=1`.
 - **npm dependency hygiene** — validates imports against `package.json` and
   the npm registry.
 - **Security subagent** — a dedicated review pass focused on vulnerabilities.
@@ -161,7 +175,7 @@ changed per file (sensitive paths first), severity- and category-tagged
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests                    # 60 tests, stdlib only
+python3 -m unittest discover -s tests                    # 71 tests, stdlib only
 python3 evals/build_fixtures.py /tmp/fixture             # planted-issue fixture repo
 python3 evals/build_fixtures.py /tmp/ds --set ds         # data-scientist fixture
 ```

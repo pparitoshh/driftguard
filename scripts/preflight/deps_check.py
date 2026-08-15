@@ -3,7 +3,8 @@
 classified as stdlib / local / declared-in-project / verified-on-registry /
 NOT-FOUND (error).
 
-Python (PyPI) and JS/TS (npm). Offline -> check skipped.
+Python (PyPI) and JS/TS (npm). Offline, or network disabled by
+default (DRIFTGUARD_ALLOW_NETWORK unset) -> check skipped.
 """
 from __future__ import annotations
 
@@ -16,7 +17,8 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import (added_lines_by_file, base_argparser, emit, finding,  # noqa: E402
+from common import (NETWORK_DISABLED_REASON, added_lines_by_file,  # noqa: E402
+                    base_argparser, emit, finding, network_allowed,
                     resolve_range, stdlib_modules)
 
 IMPORT_RE = re.compile(r"^\s*(?:from\s+([A-Za-z0-9_]+)|import\s+([A-Za-z0-9_]+))")
@@ -81,7 +83,10 @@ def local_modules(repo: Path) -> set[str]:
 
 
 def pypi_exists(name: str, timeout: int = 4) -> bool | None:
-    """True/False, or None when the registry can't be reached."""
+    """True/False, or None when the registry can't be reached or the network
+    kill switch is off (the default)."""
+    if not network_allowed():
+        return None
     url = f"https://pypi.org/pypi/{name}/json"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
@@ -128,6 +133,9 @@ def js_local_dirs(repo: Path) -> set[str]:
 
 
 def npm_exists(name: str, timeout: int = 4) -> bool | None:
+    """True/False, or None when unreachable or the network kill switch is off."""
+    if not network_allowed():
+        return None
     url = f"https://registry.npmjs.org/{urllib.parse.quote(name, safe='')}"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
@@ -248,8 +256,10 @@ def main() -> None:
 
     checked = len(py_candidates) + len(js_candidates)
     if offline:
-        skipped.append({"check": "deps_check(registry)", "reason": "registry "
-                        "unreachable — some undeclared candidate imports not verified"})
+        skipped.append({"check": "deps_check(registry)",
+                        "reason": (NETWORK_DISABLED_REASON if not network_allowed()
+                                   else "registry unreachable") +
+                        " — some undeclared candidate imports not verified"})
     emit({"check": "deps_check", "findings": findings, "skipped": skipped,
           "candidates_checked": 0 if offline and not checked else checked})
 
