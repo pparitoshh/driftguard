@@ -181,13 +181,36 @@ changed per file (sensitive paths first), severity- and category-tagged
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests                    # 71 tests, stdlib only
+python3 -m unittest discover -s tests                    # 98 tests, stdlib only
 python3 evals/build_fixtures.py /tmp/fixture             # planted-issue fixture repo
 python3 evals/build_fixtures.py /tmp/ds --set ds         # data-scientist fixture
 ```
 
 Layout: `commands/` (slash commands), `agents/` (Tier 1 subagents),
-`scripts/` (context + Tier 0, stdlib-only Python), `evals/` (fixtures + results).
+`scripts/` (context + Tier 0, stdlib-only Python), `evals/` (fixtures + results),
+`agent/` (agent runner, stdlib-only Python).
+
+## Agent runner (contract mode)
+
+A minimal ReAct loop that executes one small task under a human-approved
+contract. The LLM (headless `claude` CLI, no API key) never touches the
+filesystem directly — it emits one JSON action per turn and the runner
+validates, executes, and returns the observation.
+
+```bash
+python3 agent/contract.py --task "add subtract() to calc" \
+  --files calc.py test_calc.py --creates calc.py \
+  --tests test_calc.py::test_subtract --budget 40
+python3 agent/contract.py --propose "add subtract() to calc"   # LLM drafts, you approve
+python3 agent/run.py --contract .driftguard/contract.json
+/driftguard:review --base main                                  # unchanged review stage
+```
+
+Safety model: the agent has no shell tool — only `read_file`, `write_file`,
+`run_tests`, `done`. `write_file` enforces the contract allowlist, TDD-first
+ordering, forbidden patterns, and a 1.5x LOC-budget hard stop; the stop gate
+requires green tests plus correct test/impl write order, with a circuit
+breaker that releases to a human after 3 failed stops or `max_iterations`.
 
 ## Out of scope
 
