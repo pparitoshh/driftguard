@@ -26,6 +26,8 @@ review by `scripts/team_context.py`.
    One line per learning, dated, including **the why** when the user gave it —
    "prefer early returns over nested try/except in auth middleware because nested
    blocks are harder to debug in production" beats "don't use nested try/except".
+   Lines prefixed `[harness]` are written by the agent runner's gate (categories
+   `tests|tdd|budget`) — do not hand-edit those; treat them as drift signals.
 4. If the learning is clearly a *standing rule* rather than a preference
    (e.g. "never flag X", "always require tests under src/auth/**"), suggest also
    adding it to `.driftguard/rules.md` — rules are enforced more strictly than

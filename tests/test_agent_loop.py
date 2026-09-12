@@ -135,9 +135,18 @@ class LoopTest(unittest.TestCase):
         self.assertIn("gate: tests failing:", self.transcript())
 
     def test_max_iterations_circuit_breaker(self):
-        rc = self.run_loop([action("read_file", path="calc.py")])
+        contract = json.loads(Path(self.contract_path).read_text())
+        contract["max_iterations"] = 3
+        Path(self.contract_path).write_text(json.dumps(contract))
+        rc = self.run_loop([action("read_file", path="calc.py")] * 3)
         self.assertEqual(rc, 1)
-        self.assertEqual(self.state()["iterations"], 20)
+        self.assertEqual(self.state()["iterations"], 3)
+
+    def test_gate_circuit_breaker_releases_to_human(self):
+        rc = self.run_loop([action("done", summary="too early")])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.state()["gate_failures"], 3)
+        self.assertIn("released to human", self.transcript())
 
 
 if __name__ == "__main__":

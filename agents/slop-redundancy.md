@@ -17,6 +17,8 @@ duplication and over-abstraction are the default, not the exception.
 - `<run_dir>/session.md` — session digest, if present
 - `<run_dir>/team_context.md` — team rules/learnings, if present. Path-scoped rules
   and negative rules ("never flag …") are binding on what you report; learnings steer.
+- If `.driftguard/contract.json` exists in the repo it is the authoritative scope;
+  anything in the diff outside its `files_allowed` is a finding.
 
 ## What you look for
 
