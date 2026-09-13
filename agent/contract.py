@@ -23,7 +23,7 @@ Schema: {{"task": str, "base": "main", "files_allowed": [paths],
 "tests_required": ["tests/test_x.py::test_y" or dotted unittest ids],
 "test_cmd": "python3 -m pytest {{tests}} -q" (or unittest equivalent),
 "forbidden": ["new class", "try/except", "logging"], "tdd": true,
-"max_iterations": 40, "max_tokens": 1500000, "max_cost_usd": 2.0,
+"max_iterations": 15, "max_tokens": 1500000, "max_cost_usd": 2.0,
 "max_deleted_loc": 0 (raise only if the task removes/rewrites code)}}
 Rules: list only files the task names or obviously requires; never add
 helpers/config/utils; files_create must be a subset of files_allowed; every
@@ -60,7 +60,7 @@ def validate(contract: dict) -> list[str]:
         value = contract.get(key)
         if value is not None and (not isinstance(value, (int, float)) or value <= 0):
             errors.append(f"{key} must be a positive number")
-    if contract.get("max_iterations", 40) > MAX_ITERATIONS:
+    if contract.get("max_iterations", 15) > MAX_ITERATIONS:
         errors.append(f"max_iterations > {MAX_ITERATIONS}")
     return errors
 
@@ -123,7 +123,7 @@ def main(argv=None, backend_fn=backend.chat) -> int:
     parser.add_argument("--forbidden", nargs="*",
                         default=["new class", "try/except", "logging"])
     parser.add_argument("--no-tdd", action="store_true")
-    parser.add_argument("--max-iterations", type=int, default=40)
+    parser.add_argument("--max-iterations", type=int, default=15)
     parser.add_argument("--max-deleted", type=int, default=0)
     parser.add_argument("--max-tokens", type=int)
     parser.add_argument("--max-cost", type=float, dest="max_cost_usd")

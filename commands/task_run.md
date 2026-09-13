@@ -63,7 +63,7 @@ criteria), reading just enough of `REPO` to confirm paths. Draft a contract obje
 {"task": "...", "base": "main", "files_allowed": ["..."], "files_create": ["..."],
  "loc_budget": 40, "tests_required": ["tests/test_x.py::test_y"],
  "test_cmd": "python3 -m pytest {tests} -q", "forbidden": ["new class", "try/except", "logging"],
- "tdd": true, "max_iterations": 40, "max_tokens": 1500000, "max_cost_usd": 2.0,
+ "tdd": true, "max_iterations": 15, "max_tokens": 1500000, "max_cost_usd": 2.0,
  "max_deleted_loc": 0}
 ```
 

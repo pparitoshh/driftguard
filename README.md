@@ -225,7 +225,7 @@ Every run ends with a stats line, and the same numbers go to `.driftguard/state.
 `metrics.jsonl`:
 
 ```
-stats: iterations 5/40 · calls 5 · tokens in 142310 out 1204 · cost $0.1873 (max 1500000, max $2.0) · LOC 11/20 · denials 0 · gate failures 0
+stats: iterations 5/15 · calls 5 · tokens in 142310 out 1204 · cost $0.1873 (max 1500000, max $2.0) · LOC 11/20 · denials 0 · gate failures 0
 ```
 
 Optional spend caps on the contract, `--max-tokens N` and `--max-cost USD`

@@ -97,6 +97,8 @@ class CliTest(unittest.TestCase):
                 "--budget", "50",
             ])
         self.assertEqual(rc, 0)
+        written = json.loads((Path(self.tmp.name) / ".driftguard" / "contract.json").read_text())
+        self.assertEqual(written["max_iterations"], 15)
 
     def test_invalid_json_rejected(self):
         with cwd(self.tmp.name):

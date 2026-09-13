@@ -61,7 +61,7 @@ def run(contract_path: str, repo: str = ".", backend_fn=backend.chat) -> int:
         else fresh_state(contract, repo_path)
     )
     state.setdefault("usage", {})
-    max_iterations = contract.get("max_iterations", 40)
+    max_iterations = contract.get("max_iterations", 15)
     system = SYSTEM_TEMPLATE.format(
         task=contract["task"],
         files=", ".join(contract["files_allowed"]),
@@ -141,7 +141,7 @@ def stats_line(contract: dict, state: dict) -> str:
     if contract.get("max_cost_usd"):
         caps.append(f"max ${contract['max_cost_usd']}")
     return (
-        f"stats: iterations {state['iterations']}/{contract.get('max_iterations', 40)}"
+        f"stats: iterations {state['iterations']}/{contract.get('max_iterations', 15)}"
         f" · calls {usage.get('calls', 0)}"
         f" · tokens in {usage.get('input_tokens', 0)} out {usage.get('output_tokens', 0)}"
         f" · cost ${usage.get('cost_usd', 0):.4f}"
