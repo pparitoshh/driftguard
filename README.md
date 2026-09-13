@@ -198,11 +198,17 @@ filesystem directly — it emits one JSON action per turn and the runner
 validates, executes, and returns the observation.
 
 ```bash
-python3 agent/contract.py --task "add subtract() to calc" \
+/driftguard:task_run "add subtract() to calc"   # spec/tasks (superpowers etc.) → per task: contract → approve → run → review
+```
+
+Or by hand, from the driftguard checkout (or with `PYTHONPATH` pointing at it):
+
+```bash
+python3 -m agent.contract --task "add subtract() to calc" \
   --files calc.py test_calc.py --creates calc.py \
   --tests test_calc.py::test_subtract --budget 40
-python3 agent/contract.py --propose "add subtract() to calc"   # LLM drafts, you approve
-python3 agent/run.py --contract .driftguard/contract.json
+python3 -m agent.contract --propose "add subtract() to calc"   # LLM drafts, you approve
+python3 -m agent.run --contract .driftguard/contract.json
 /driftguard:review --base main                                  # unchanged review stage
 ```
 
@@ -211,6 +217,10 @@ Safety model: the agent has no shell tool — only `read_file`, `write_file`,
 ordering, forbidden patterns, and a 1.5x LOC-budget hard stop; the stop gate
 requires green tests plus correct test/impl write order, with a circuit
 breaker that releases to a human after 3 failed stops or `max_iterations`.
+
+## End-to-end flow
+
+See [agentic_code.md](agentic_code.md): superpowers (design, plan) → `/driftguard:task_run` → `/driftguard:review` → finish. Written as an agent protocol that humans can read too.
 
 ## Out of scope
 
