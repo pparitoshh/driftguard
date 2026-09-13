@@ -63,14 +63,17 @@ criteria), reading just enough of `REPO` to confirm paths. Draft a contract obje
 {"task": "...", "base": "main", "files_allowed": ["..."], "files_create": ["..."],
  "loc_budget": 40, "tests_required": ["tests/test_x.py::test_y"],
  "test_cmd": "python3 -m pytest {tests} -q", "forbidden": ["new class", "try/except", "logging"],
- "tdd": true, "max_iterations": 40}
+ "tdd": true, "max_iterations": 40, "max_deleted_loc": 0}
 ```
 
 `task` = the spec task text plus `(spec: <SPEC path>, task N)` so the review can
 resolve the plan. Rules: list only files the task names or obviously requires; every test file is in
 `files_allowed`; `files_create` ⊆ `files_allowed`; paths repo-relative, no `..`;
 `test_cmd` contains `{tests}` as its own argument and uses no shell syntax (it is run
-without a shell); match the repo's existing test runner (unittest vs pytest).
+without a shell); match the repo's existing test runner (unittest vs pytest), and write
+`tests_required` ids in that runner's form (`test_x.py::test_y` for pytest,
+`test_x.Class.test_y` for unittest); `max_deleted_loc` stays 0 unless the task
+rewrites or removes existing code.
 
 ## 2. Human approval (required)
 
@@ -99,14 +102,16 @@ finish. Then report:
 - iterations, denials, added_loc vs budget from `.driftguard/state.json`
 - files changed (`git -C "$REPO" diff --stat`)
 
-If exit is non-zero, show the last ~20 lines of `.driftguard/agent_transcript.jsonl`
-and stop — do not patch the code by hand or rerun without asking. If the gate
-reason is `circuit breaker: released to human`, say so plainly: tests/TDD/budget
-did not pass and the change needs human attention.
+Exit codes: `0` gate passed · `1` aborted (max_iterations or repeated malformed /
+CLI-error replies) · `2` circuit breaker released to human (tests/TDD/budget failed
+3 times). On `1` or `2`, show the last ~20 lines of `.driftguard/agent_transcript.jsonl`
+and stop — do not patch the code by hand or rerun without asking. If the transcript
+shows `claude CLI error`, report it (login, model access, or a safeguard refusal;
+`DRIFTGUARD_MODEL=<model>` switches the runner's model, default `sonnet`).
 
 ## 5. Review
 
-Unless `--no-review` (or the run failed), run `/driftguard:review --base <B> --repo <REPO> --task "<task text>"`.
+Only on exit `0`, and unless `--no-review`, run `/driftguard:review --base <B> --repo <REPO> --task "<task text>"`.
 The review treats `.driftguard/contract.json` as authoritative scope.
 
 ## Notes

@@ -100,6 +100,14 @@ def write_file(path: str, content: str, contract: dict, state: dict, repo: Path)
             content if allowed == normalized
             else target.read_text() if target.is_file() else ""
         )
+    deleted = loc.deleted_loc(state["baseline"], current)
+    max_deleted = contract.get("max_deleted_loc", 0)
+    if deleted > max_deleted:
+        return _deny(
+            state,
+            f"deletes {deleted} existing LOC (max {max_deleted}): "
+            "read the file and keep its existing code",
+        )
     added = loc.added_loc(state["baseline"], current)
     budget = contract["loc_budget"]
     if added > budget * 1.5:

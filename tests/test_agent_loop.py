@@ -5,6 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from unittest.mock import patch
+
+from agent import backend
 from agent import run as runner
 
 TEST_SRC = (
@@ -172,10 +175,50 @@ class LoopTest(unittest.TestCase):
         self.assertIn("over budget:", self.transcript())
         self.assertFalse((self.repo / "test_calc.py").exists())
 
-    def test_malformed_reply_retried_once_then_aborts(self):
-        rc = self.run_loop(["not json at all", "still not json"])
+    def test_malformed_reply_retried_then_aborts(self):
+        rc = self.run_loop(["not json at all", "still not json", "nope"])
         self.assertEqual(rc, 1)
-        self.assertEqual(self.transcript().count("malformed reply"), 2)
+        self.assertEqual(self.transcript().count("malformed reply"), 3)
+        self.assertEqual(self.state()["iterations"], 3)
+
+    def test_backend_error_is_surfaced_and_retried(self):
+        replies = iter([action("write_file", path="test_calc.py", content=TEST_SRC),
+                        action("write_file", path="calc.py", content=IMPL_SRC),
+                        action("done", summary="done")])
+
+        def flaky(system, transcript, calls=[0]):
+            calls[0] += 1
+            if calls[0] == 1:
+                raise RuntimeError("claude CLI error: API Error: flagged")
+            return next(replies)
+
+        rc = runner.run(self.contract_path, str(self.repo), flaky)
+        self.assertEqual(rc, 0)
+        self.assertIn("claude CLI error: API Error: flagged", self.transcript())
+
+    def test_prompt_names_required_tests_and_command(self):
+        seen = []
+
+        def capture(system, transcript):
+            seen.append(system)
+            return action("done", summary="x")
+
+        runner.run(self.contract_path, str(self.repo), capture)
+        self.assertIn("test_calc.T.test_add", seen[0])
+        self.assertIn("python3 -m unittest {tests}", seen[0])
+
+    def test_deleting_existing_code_denied(self):
+        (self.repo / "calc.py").write_text("def mul(a, b):\n    return a * b\n")
+        rc = self.run_loop([
+            action("write_file", path="test_calc.py", content=TEST_SRC),
+            action("write_file", path="calc.py", content=IMPL_SRC),
+            action("write_file", path="calc.py",
+                   content="def mul(a, b):\n    return a * b\n\n\n" + IMPL_SRC),
+            action("done", summary="done"),
+        ])
+        self.assertEqual(rc, 0)
+        self.assertIn("deletes 2 existing LOC (max 0)", self.transcript())
+        self.assertIn("def mul", (self.repo / "calc.py").read_text())
 
     def test_gate_failure_returns_agent_to_loop(self):
         rc = self.run_loop([
@@ -197,9 +240,35 @@ class LoopTest(unittest.TestCase):
 
     def test_gate_circuit_breaker_releases_to_human(self):
         rc = self.run_loop([action("done", summary="too early")])
-        self.assertEqual(rc, 0)
+        self.assertEqual(rc, runner.EXIT_RELEASED)
         self.assertEqual(self.state()["gate_failures"], 3)
         self.assertIn("released to human", self.transcript())
+
+
+class BackendTest(unittest.TestCase):
+    def fake_proc(self, rc, out, err=""):
+        return type("P", (), {"returncode": rc, "stdout": out, "stderr": err})()
+
+    def test_api_error_text_raises(self):
+        with patch.object(backend.subprocess, "run",
+                          return_value=self.fake_proc(0, "API Error: flagged\n")):
+            with self.assertRaisesRegex(RuntimeError, "API Error: flagged"):
+                backend.chat("s", [])
+
+    def test_nonzero_exit_raises_with_stderr(self):
+        with patch.object(backend.subprocess, "run",
+                          return_value=self.fake_proc(1, "", "Not logged in\n")):
+            with self.assertRaisesRegex(RuntimeError, "Not logged in"):
+                backend.chat("s", [])
+
+    def test_model_pinned_and_overridable(self):
+        with patch.object(backend.subprocess, "run",
+                          return_value=self.fake_proc(0, "{}")) as run:
+            backend.chat("s", [])
+            self.assertEqual(run.call_args.args[0][-2:], ["--model", "sonnet"])
+            with patch.dict("os.environ", {"DRIFTGUARD_MODEL": "opus"}):
+                backend.chat("s", [])
+            self.assertEqual(run.call_args.args[0][-1], "opus")
 
 
 if __name__ == "__main__":

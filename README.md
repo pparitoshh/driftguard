@@ -181,7 +181,7 @@ changed per file (sensitive paths first), severity- and category-tagged
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests                    # 105 tests, stdlib only
+python3 -m unittest discover -s tests                    # 111 tests, stdlib only
 python3 evals/build_fixtures.py /tmp/fixture             # planted-issue fixture repo
 python3 evals/build_fixtures.py /tmp/ds --set ds         # data-scientist fixture
 ```
@@ -216,7 +216,10 @@ Safety model: the agent has no shell tool — only `read_file`, `write_file`,
 `run_tests`, `done`. `write_file` enforces the contract allowlist, TDD-first
 ordering, forbidden patterns, and a 1.5x LOC-budget hard stop; the stop gate
 requires green tests plus correct test/impl write order, with a circuit
-breaker that releases to a human after 3 failed stops or `max_iterations`.
+breaker that releases to a human after 3 failed stops (exit 2) or `max_iterations`
+(exit 1). `write_file` also denies deleting existing lines beyond `max_deleted_loc`
+(default 0). The runner calls `claude -p --model sonnet`; set `DRIFTGUARD_MODEL`
+to change it.
 
 ## End-to-end flow
 

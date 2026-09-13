@@ -10,9 +10,12 @@ from pathlib import Path
 
 from agent import backend, gate, tools
 
+MAX_MALFORMED = 3
+EXIT_RELEASED = 2
+
 SYSTEM_TEMPLATE = """You are a coding agent executing one task under a contract.
 Reply with EXACTLY one JSON object, no prose, no code fences:
-{{"thought": "...", "action": "read_file|write_file|run_tests|done", "args": {{...}}}}
+{{"action": "read_file|write_file|run_tests|done", "args": {{...}}}}
 write_file args: {{"path": "...", "content": "..."}} (full file content).
 read_file args: {{"path": "..."}}. run_tests args: {{}}. done args: {{"summary": "..."}}.
 After each action you receive {{"observation": {{"ok": true|false, "output": "..."}}}}.
@@ -20,6 +23,11 @@ Denied actions are feedback: adjust and continue. Call done only when tests pass
 
 Task: {task}
 Allowed files: {files}
+Required tests (must exist with exactly these ids): {tests}
+Test command: {test_cmd}
+unittest ids are module.Class.method: test_calc.T.test_x means class T with method
+test_x in test_calc.py. write_file replaces the whole file: read existing files first
+and keep their code; deleting existing lines is denied beyond {max_deleted} LOC.
 LOC budget: {budget} (pure LOC added; writes over 1.5x are denied)
 {tdd}
 Forbidden patterns: {forbidden}"""
@@ -55,6 +63,9 @@ def run(contract_path: str, repo: str = ".", backend_fn=backend.chat) -> int:
         task=contract["task"],
         files=", ".join(contract["files_allowed"]),
         budget=contract["loc_budget"],
+        tests=", ".join(contract["tests_required"]),
+        test_cmd=contract["test_cmd"],
+        max_deleted=contract.get("max_deleted_loc", 0),
         tdd="TDD: your first write must be " + tools.test_file(contract)
         if contract.get("tdd", True)
         else "",
@@ -80,9 +91,9 @@ def run(contract_path: str, repo: str = ".", backend_fn=backend.chat) -> int:
                 "observation",
                 f"malformed reply ({exc}); reply with one JSON object only",
             )
-            if malformed >= 2:
-                break
             state_file.write_text(json.dumps(state, indent=2))
+            if malformed >= MAX_MALFORMED:
+                break
             continue
         record("agent", json.dumps(action))
         result = tools.dispatch(action, contract, state, repo_path)
@@ -93,7 +104,7 @@ def run(contract_path: str, repo: str = ".", backend_fn=backend.chat) -> int:
             if ok:
                 state_file.write_text(json.dumps(state, indent=2))
                 print(reason)
-                return 0
+                return EXIT_RELEASED if reason == gate.RELEASED else 0
         state_file.write_text(json.dumps(state, indent=2))
     print(f"aborted after {state['iterations']} iterations; see {log}")
     return 1

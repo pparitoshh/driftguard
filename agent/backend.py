@@ -1,9 +1,11 @@
 """LLM backend: headless `claude -p` via subprocess, plus reply parsing."""
 
 import json
+import os
 import subprocess
 
 _TIMEOUT_S = 300
+DEFAULT_MODEL = "sonnet"
 
 
 def chat(system: str, transcript: list[dict]) -> str:
@@ -19,7 +21,7 @@ def chat(system: str, transcript: list[dict]) -> str:
     prompt = system + "\n\n" + "\n\n".join(turns)
     try:
         proc = subprocess.run(
-            ["claude", "-p"],
+            ["claude", "-p", "--model", os.environ.get("DRIFTGUARD_MODEL", DEFAULT_MODEL)],
             input=prompt,
             capture_output=True,
             text=True,
@@ -29,6 +31,9 @@ def chat(system: str, transcript: list[dict]) -> str:
         raise RuntimeError("claude CLI not found on PATH")
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"claude CLI timed out after {_TIMEOUT_S}s")
+    if proc.returncode != 0 or proc.stdout.startswith("API Error"):
+        detail = (proc.stderr.strip() or proc.stdout.strip()).splitlines()
+        raise RuntimeError("claude CLI error: " + (detail[0] if detail else f"exit {proc.returncode}"))
     return proc.stdout
 
 

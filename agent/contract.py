@@ -23,7 +23,7 @@ Schema: {{"task": str, "base": "main", "files_allowed": [paths],
 "tests_required": ["tests/test_x.py::test_y" or dotted unittest ids],
 "test_cmd": "python3 -m pytest {{tests}} -q" (or unittest equivalent),
 "forbidden": ["new class", "try/except", "logging"], "tdd": true,
-"max_iterations": 40}}
+"max_iterations": 40, "max_deleted_loc": 0 (raise only if the task removes/rewrites code)}}
 Rules: list only files the task names or obviously requires; never add
 helpers/config/utils; files_create must be a subset of files_allowed; every
 test file must appear in files_allowed.
@@ -72,6 +72,7 @@ def build(args: argparse.Namespace) -> dict:
         "forbidden": args.forbidden,
         "tdd": not args.no_tdd,
         "max_iterations": args.max_iterations,
+        "max_deleted_loc": args.max_deleted,
     }
 
 
@@ -116,6 +117,7 @@ def main(argv=None, backend_fn=backend.chat) -> int:
                         default=["new class", "try/except", "logging"])
     parser.add_argument("--no-tdd", action="store_true")
     parser.add_argument("--max-iterations", type=int, default=40)
+    parser.add_argument("--max-deleted", type=int, default=0)
     parser.add_argument("--json", dest="raw_json")
     parser.add_argument("--propose", metavar="TASK_TEXT")
     args = parser.parse_args(argv)

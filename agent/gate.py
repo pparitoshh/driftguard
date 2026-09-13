@@ -10,11 +10,12 @@ from agent.tools import test_argv, test_file
 
 TEST_TIMEOUT_S = 120
 MAX_GATE_FAILURES = 3
+RELEASED = "circuit breaker: released to human"
 
 
 def check(contract: dict, state: dict, repo: Path) -> tuple[bool, str]:
     if state["gate_failures"] >= MAX_GATE_FAILURES:
-        return True, "circuit breaker: released to human"
+        return True, RELEASED
     try:
         proc = subprocess.run(
             test_argv(contract), cwd=repo, capture_output=True, text=True,

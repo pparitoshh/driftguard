@@ -186,6 +186,9 @@ sequenceDiagram
 
 Safety model:
 - The agent has no shell tool.
+- Deleting existing lines is refused beyond `max_deleted_loc` (default 0), since `write_file` replaces whole files.
+- Exit codes: `0` passed, `1` aborted, `2` released to a human. Review runs only on `0`.
+- The runner's model is `sonnet` by default; override it with `DRIFTGUARD_MODEL`.
 - `test_cmd` is run without a shell.
 - Writes are refused outside `files_allowed`, outside the repo (including via `..` or
   symlinks), and under `agent/`, `.driftguard/`, and `.claude/`.
