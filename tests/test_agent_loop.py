@@ -88,6 +88,59 @@ class LoopTest(unittest.TestCase):
         self.assertIn("outside contract: evil.py", self.transcript())
         self.assertEqual(self.state()["denials"], 1)
 
+    def test_protected_path_write_denied(self):
+        self.run_loop([
+            action("write_file", path="agent/evil.py", content="x = 1\n"),
+            action("done", summary="done"),
+        ])
+        self.assertFalse((self.repo / "agent" / "evil.py").exists())
+        self.assertIn("protected path: agent/evil.py", self.transcript())
+
+    def test_write_escaping_repo_denied(self):
+        outside = Path(self.tmp.name).parent / "escaped_calc.py"
+        contract = json.loads(Path(self.contract_path).read_text())
+        contract["files_allowed"].append("../escaped_calc.py")
+        contract["tdd"] = False
+        Path(self.contract_path).write_text(json.dumps(contract))
+        self.run_loop([
+            action("write_file", path="../escaped_calc.py", content="x = 1\n"),
+            action("done", summary="done"),
+        ])
+        self.assertFalse(outside.exists())
+        self.assertIn("outside repo: ../escaped_calc.py", self.transcript())
+
+    def test_symlink_escaping_repo_denied(self):
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        (self.repo / "calc.py").symlink_to(Path(outside.name) / "calc.py")
+        self.run_loop([
+            action("write_file", path="test_calc.py", content=TEST_SRC),
+            action("write_file", path="calc.py", content=IMPL_SRC),
+            action("done", summary="done"),
+        ])
+        self.assertFalse((Path(outside.name) / "calc.py").exists())
+        self.assertIn("outside repo: calc.py", self.transcript())
+
+    def test_test_cmd_not_run_through_shell(self):
+        marker = self.repo / "pwned"
+        contract = json.loads(Path(self.contract_path).read_text())
+        contract["test_cmd"] = f"python3 -m unittest {{tests}}; touch {marker}"
+        Path(self.contract_path).write_text(json.dumps(contract))
+        self.run_loop([action("run_tests"), action("done", summary="done")])
+        self.assertFalse(marker.exists())
+
+    def test_main_cli_wires_contract_and_repo(self):
+        rc = runner.main(
+            ["--contract", self.contract_path, "--repo", str(self.repo)],
+            FakeBackend([
+                action("write_file", path="test_calc.py", content=TEST_SRC),
+                action("write_file", path="calc.py", content=IMPL_SRC),
+                action("done", summary="done"),
+            ]),
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual((self.repo / "calc.py").read_text(), IMPL_SRC)
+
     def test_tdd_first_write_must_be_test(self):
         rc = self.run_loop([
             action("write_file", path="calc.py", content=IMPL_SRC),

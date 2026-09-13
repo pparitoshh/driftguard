@@ -7,10 +7,11 @@ existence-based, so greenfield projects work (files_create need not exist).
 
 import argparse
 import json
+import shlex
 import sys
 from pathlib import Path
 
-from agent import backend
+from agent import backend, tools
 
 MAX_BUDGET = 300
 MAX_ITERATIONS = 100
@@ -40,12 +41,18 @@ def validate(contract: dict) -> list[str]:
     if contract["loc_budget"] > MAX_BUDGET:
         errors.append(f"loc_budget {contract['loc_budget']} > {MAX_BUDGET}: split the task")
     allowed = set(contract["files_allowed"])
+    for path in allowed | set(contract.get("files_create", [])):
+        if Path(path).is_absolute() or ".." in Path(path).parts:
+            errors.append(f"path must be repo-relative without '..': {path}")
     for entry in contract["tests_required"]:
-        test_path = entry.split("::")[0] if "::" in entry else entry.split(".")[0] + ".py"
-        if test_path not in allowed:
+        if tools.test_path(entry) not in allowed:
             errors.append(f"test outside files_allowed: {entry}")
-    if "{tests}" not in contract["test_cmd"]:
-        errors.append("test_cmd must contain the literal {tests}")
+    try:
+        tokens = shlex.split(contract["test_cmd"])
+    except ValueError:
+        tokens = []
+    if "{tests}" not in tokens:
+        errors.append("test_cmd must contain {tests} as a standalone argument")
     if not set(contract.get("files_create", [])) <= allowed:
         errors.append("files_create must be a subset of files_allowed")
     if contract.get("max_iterations", 40) > MAX_ITERATIONS:

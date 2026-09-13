@@ -181,7 +181,7 @@ changed per file (sensitive paths first), severity- and category-tagged
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests                    # 98 tests, stdlib only
+python3 -m unittest discover -s tests                    # 105 tests, stdlib only
 python3 evals/build_fixtures.py /tmp/fixture             # planted-issue fixture repo
 python3 evals/build_fixtures.py /tmp/ds --set ds         # data-scientist fixture
 ```

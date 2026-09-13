@@ -50,6 +50,15 @@ class ValidateTest(unittest.TestCase):
         bad = dict(VALID, test_cmd="pytest")
         self.assertIn("{tests}", "; ".join(contract_mod.validate(bad)))
 
+    def test_reject_test_cmd_placeholder_glued_to_shell(self):
+        bad = dict(VALID, test_cmd="pytest x{tests}")
+        self.assertIn("{tests}", "; ".join(contract_mod.validate(bad)))
+
+    def test_reject_escaping_paths(self):
+        for path in ("../evil.py", "/etc/passwd", "a/../../b.py"):
+            bad = dict(VALID, files_allowed=VALID["files_allowed"] + [path])
+            self.assertIn("repo-relative", "; ".join(contract_mod.validate(bad)), path)
+
     def test_reject_creates_outside_allowed(self):
         bad = dict(VALID, files_create=["nope.py"])
         self.assertIn("subset", "; ".join(contract_mod.validate(bad)))

@@ -6,7 +6,7 @@ import time
 from datetime import date
 from pathlib import Path
 
-from agent.tools import test_file
+from agent.tools import test_argv, test_file
 
 TEST_TIMEOUT_S = 120
 MAX_GATE_FAILURES = 3
@@ -15,10 +15,9 @@ MAX_GATE_FAILURES = 3
 def check(contract: dict, state: dict, repo: Path) -> tuple[bool, str]:
     if state["gate_failures"] >= MAX_GATE_FAILURES:
         return True, "circuit breaker: released to human"
-    cmd = contract["test_cmd"].format(tests=" ".join(contract["tests_required"]))
     try:
         proc = subprocess.run(
-            cmd, shell=True, cwd=repo, capture_output=True, text=True,
+            test_argv(contract), cwd=repo, capture_output=True, text=True,
             timeout=TEST_TIMEOUT_S,
         )
     except subprocess.TimeoutExpired:

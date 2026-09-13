@@ -99,14 +99,14 @@ def run(contract_path: str, repo: str = ".", backend_fn=backend.chat) -> int:
     return 1
 
 
-def main(argv=None) -> int:
+def main(argv=None, backend_fn=backend.chat) -> int:
     parser = argparse.ArgumentParser(
         description="Run one task under a driftguard contract."
     )
     parser.add_argument("--contract", required=True)
     parser.add_argument("--repo", default=".")
     args = parser.parse_args(argv)
-    return run(args.contract, args.repo)
+    return run(args.contract, args.repo, backend_fn)
 
 
 if __name__ == "__main__":

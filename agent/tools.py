@@ -5,6 +5,7 @@ in-loop and can self-correct. Every deny increments state["denials"].
 """
 
 import re
+import shlex
 import subprocess
 import time
 from pathlib import Path, PurePosixPath
@@ -42,7 +43,10 @@ def dispatch(action: dict, contract: dict, state: dict, repo: Path) -> dict:
 def test_file(contract: dict) -> str:
     """Path of the primary test file. v1 heuristic: pytest `file::id` form
     uses the file part; dotted unittest ids map top module to `<module>.py`."""
-    entry = contract["tests_required"][0]
+    return test_path(contract["tests_required"][0])
+
+
+def test_path(entry: str) -> str:
     if "::" in entry:
         return entry.split("::")[0]
     return entry.split(".")[0] + ".py"
@@ -52,10 +56,23 @@ def is_test(path: str, contract: dict) -> bool:
     return path == test_file(contract) or PurePosixPath(path).name.startswith("test")
 
 
-def read_file(path: str, repo: Path) -> dict:
+def inside_repo(path: str, repo: Path) -> bool:
     target = (repo / path).resolve()
-    if target != repo and repo not in target.parents:
+    return target == repo or repo in target.parents
+
+
+def test_argv(contract: dict) -> list[str]:
+    """test_cmd as an argv list, {tests} expanded in place; never run via a shell."""
+    argv = []
+    for token in shlex.split(contract["test_cmd"]):
+        argv.extend(contract["tests_required"] if token == "{tests}" else [token])
+    return argv
+
+
+def read_file(path: str, repo: Path) -> dict:
+    if not inside_repo(path, repo):
         return {"ok": False, "output": f"outside repo: {path}"}
+    target = (repo / path).resolve()
     if not target.is_file():
         return {"ok": False, "output": f"not a file: {path}"}
     return {"ok": True, "output": target.read_text()[:READ_CAP]}
@@ -67,6 +84,8 @@ def write_file(path: str, content: str, contract: dict, state: dict, repo: Path)
         return _deny(state, f"protected path: {normalized}")
     if normalized not in contract["files_allowed"]:
         return _deny(state, f"outside contract: {normalized}")
+    if not inside_repo(normalized, repo):
+        return _deny(state, f"outside repo: {normalized}")
     test_written = any(is_test(p, contract) for p in state["first_writes"])
     if contract.get("tdd", True) and not is_test(normalized, contract) and not test_written:
         return _deny(state, f"TDD: first write must be {test_file(contract)}")
@@ -100,10 +119,9 @@ def write_file(path: str, content: str, contract: dict, state: dict, repo: Path)
 
 
 def run_tests(contract: dict, repo: Path) -> dict:
-    cmd = contract["test_cmd"].format(tests=" ".join(contract["tests_required"]))
     try:
         proc = subprocess.run(
-            cmd, shell=True, cwd=repo, capture_output=True, text=True,
+            test_argv(contract), cwd=repo, capture_output=True, text=True,
             timeout=TEST_TIMEOUT_S,
         )
     except subprocess.TimeoutExpired:
