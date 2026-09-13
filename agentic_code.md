@@ -189,6 +189,7 @@ Safety model:
 - Deleting existing lines is refused beyond `max_deleted_loc` (default 0), since `write_file` replaces whole files.
 - Exit codes: `0` passed, `1` aborted, `2` released to a human. Review runs only on `0`.
 - The runner's model is `sonnet` by default; override it with `DRIFTGUARD_MODEL`.
+- Budgets: `loc_budget`, `max_iterations`, and optional `max_tokens` and `max_cost_usd` caps. Each run prints a `stats:` line (iterations, calls, tokens, cost, LOC, denials) and `task_run` totals it across tasks.
 - `test_cmd` is run without a shell.
 - Writes are refused outside `files_allowed`, outside the repo (including via `..` or
   symlinks), and under `agent/`, `.driftguard/`, and `.claude/`.

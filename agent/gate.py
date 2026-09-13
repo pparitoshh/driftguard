@@ -57,6 +57,7 @@ def _append_metrics(contract: dict, state: dict, repo: Path) -> None:
         "iterations": state["iterations"],
         "denials": state["denials"],
         "gate_failures": state["gate_failures"],
+        "usage": state.get("usage", {}),
         "outcome": "pass",
         "ts": time.time(),
     }

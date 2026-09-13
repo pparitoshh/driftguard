@@ -1,5 +1,6 @@
 """Phase 1 acceptance: ReAct loop with a scripted FakeBackend in a tmp repo."""
 
+import io
 import json
 import tempfile
 import unittest
@@ -28,7 +29,10 @@ class FakeBackend:
     def __init__(self, replies):
         self.replies = list(replies)
 
-    def __call__(self, system, transcript):
+    def __call__(self, system, transcript, usage=None):
+        if usage is not None:
+            backend.add_usage(usage, {"usage": {"input_tokens": 100, "output_tokens": 10},
+                                      "total_cost_usd": 0.01})
         if self.replies:
             return self.replies.pop(0)
         return action("done", summary="script exhausted")
@@ -175,6 +179,39 @@ class LoopTest(unittest.TestCase):
         self.assertIn("over budget:", self.transcript())
         self.assertFalse((self.repo / "test_calc.py").exists())
 
+    def set_contract(self, **changes):
+        contract = json.loads(Path(self.contract_path).read_text())
+        contract.update(changes)
+        Path(self.contract_path).write_text(json.dumps(contract))
+
+    def test_usage_tracked_and_stats_printed(self):
+        with patch("sys.stdout", new_callable=io.StringIO) as out:
+            rc = self.run_loop([
+                action("write_file", path="test_calc.py", content=TEST_SRC),
+                action("write_file", path="calc.py", content=IMPL_SRC),
+                action("done", summary="done"),
+            ])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.state()["usage"]["calls"], 3)
+        self.assertEqual(self.state()["usage"]["input_tokens"], 300)
+        self.assertIn("stats: iterations 3/20 · calls 3 · tokens in 300 out 30 · cost $0.0300",
+                      out.getvalue())
+
+    def test_token_budget_aborts(self):
+        self.set_contract(max_tokens=200)
+        with patch("sys.stdout", new_callable=io.StringIO) as out:
+            rc = self.run_loop([action("read_file", path="calc.py")] * 5)
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.state()["usage"]["calls"], 2)
+        self.assertIn("token budget spent: 220/200", out.getvalue())
+
+    def test_cost_budget_aborts(self):
+        self.set_contract(max_cost_usd=0.015)
+        with patch("sys.stdout", new_callable=io.StringIO):
+            rc = self.run_loop([action("read_file", path="calc.py")] * 5)
+        self.assertEqual(rc, 1)
+        self.assertIn("cost budget spent: $0.0200/$0.015", self.transcript())
+
     def test_malformed_reply_retried_then_aborts(self):
         rc = self.run_loop(["not json at all", "still not json", "nope"])
         self.assertEqual(rc, 1)
@@ -186,7 +223,7 @@ class LoopTest(unittest.TestCase):
                         action("write_file", path="calc.py", content=IMPL_SRC),
                         action("done", summary="done")])
 
-        def flaky(system, transcript, calls=[0]):
+        def flaky(system, transcript, usage=None, calls=[0]):
             calls[0] += 1
             if calls[0] == 1:
                 raise RuntimeError("claude CLI error: API Error: flagged")
@@ -199,7 +236,7 @@ class LoopTest(unittest.TestCase):
     def test_prompt_names_required_tests_and_command(self):
         seen = []
 
-        def capture(system, transcript):
+        def capture(system, transcript, usage=None):
             seen.append(system)
             return action("done", summary="x")
 
@@ -249,7 +286,29 @@ class BackendTest(unittest.TestCase):
     def fake_proc(self, rc, out, err=""):
         return type("P", (), {"returncode": rc, "stdout": out, "stderr": err})()
 
-    def test_api_error_text_raises(self):
+    def reply(self, result, is_error=False):
+        return json.dumps({"result": result, "is_error": is_error, "total_cost_usd": 0.02,
+                           "usage": {"input_tokens": 5, "cache_read_input_tokens": 1000,
+                                     "cache_creation_input_tokens": 200, "output_tokens": 30}})
+
+    def test_usage_accumulated_and_result_returned(self):
+        usage = {}
+        with patch.object(backend.subprocess, "run",
+                          return_value=self.fake_proc(0, self.reply('{"action": "done"}'))):
+            self.assertEqual(backend.chat("s", [], usage), '{"action": "done"}')
+            backend.chat("s", [], usage)
+        self.assertEqual(usage, {"calls": 2, "input_tokens": 2410,
+                                 "output_tokens": 60, "cost_usd": 0.04})
+
+    def test_is_error_reply_raises_and_still_counts_usage(self):
+        usage = {}
+        with patch.object(backend.subprocess, "run",
+                          return_value=self.fake_proc(0, self.reply("API Error: flagged", True))):
+            with self.assertRaisesRegex(RuntimeError, "API Error: flagged"):
+                backend.chat("s", [], usage)
+        self.assertEqual(usage["calls"], 1)
+
+    def test_non_json_output_raises(self):
         with patch.object(backend.subprocess, "run",
                           return_value=self.fake_proc(0, "API Error: flagged\n")):
             with self.assertRaisesRegex(RuntimeError, "API Error: flagged"):
@@ -263,7 +322,7 @@ class BackendTest(unittest.TestCase):
 
     def test_model_pinned_and_overridable(self):
         with patch.object(backend.subprocess, "run",
-                          return_value=self.fake_proc(0, "{}")) as run:
+                          return_value=self.fake_proc(0, self.reply("{}"))) as run:
             backend.chat("s", [])
             self.assertEqual(run.call_args.args[0][-2:], ["--model", "sonnet"])
             with patch.dict("os.environ", {"DRIFTGUARD_MODEL": "opus"}):

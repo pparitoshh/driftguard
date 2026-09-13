@@ -1,6 +1,6 @@
 {
   "name": "driftguard",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Reviews a PR or branch against what it was asked to build — reconstructed from the plan/spec, the Claude session that produced it, and the git development history. Deterministic secrets/CVE/dep-hygiene pre-flight, security subagent, risk triage, custom rules and learnings, and a role-based data-scientist reviewer for ML methodology (splits, leakage, ranking evaluation).",
   "author": {
     "name": "paritosh"

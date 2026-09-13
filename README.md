@@ -181,7 +181,7 @@ changed per file (sensitive paths first), severity- and category-tagged
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests                    # 111 tests, stdlib only
+python3 -m unittest discover -s tests                    # 117 tests, stdlib only
 python3 evals/build_fixtures.py /tmp/fixture             # planted-issue fixture repo
 python3 evals/build_fixtures.py /tmp/ds --set ds         # data-scientist fixture
 ```
@@ -220,6 +220,17 @@ breaker that releases to a human after 3 failed stops (exit 2) or `max_iteration
 (exit 1). `write_file` also denies deleting existing lines beyond `max_deleted_loc`
 (default 0). The runner calls `claude -p --model sonnet`; set `DRIFTGUARD_MODEL`
 to change it.
+
+Every run ends with a stats line, and the same numbers go to `.driftguard/state.json` and
+`metrics.jsonl`:
+
+```
+stats: iterations 5/40 · calls 5 · tokens in 142310 out 1204 · cost $0.1873 (max 1500000, max $2.0) · LOC 11/20 · denials 0 · gate failures 0
+```
+
+Optional spend caps on the contract, `--max-tokens N` and `--max-cost USD`
+(`max_tokens` and `max_cost_usd`), abort the run with exit 1 once they are reached,
+alongside `--max-iterations`.
 
 ## End-to-end flow
 

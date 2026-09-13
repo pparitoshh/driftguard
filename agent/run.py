@@ -44,6 +44,7 @@ def fresh_state(contract: dict, repo: Path) -> dict:
         "iterations": 0,
         "gate_failures": 0,
         "denials": 0,
+        "usage": {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0},
         "baseline": baseline,
     }
 
@@ -59,6 +60,8 @@ def run(contract_path: str, repo: str = ".", backend_fn=backend.chat) -> int:
         if state_file.is_file()
         else fresh_state(contract, repo_path)
     )
+    state.setdefault("usage", {})
+    max_iterations = contract.get("max_iterations", 40)
     system = SYSTEM_TEMPLATE.format(
         task=contract["task"],
         files=", ".join(contract["files_allowed"]),
@@ -80,10 +83,16 @@ def run(contract_path: str, repo: str = ".", backend_fn=backend.chat) -> int:
             fh.write(json.dumps({"role": role, "content": content}) + "\n")
 
     malformed = 0
-    while state["iterations"] < contract.get("max_iterations", 40):
+    outcome = None
+    while outcome is None and state["iterations"] < max_iterations:
+        over = over_budget(contract, state["usage"])
+        if over:
+            print(over)
+            record("observation", over)
+            break
         state["iterations"] += 1
         try:
-            action = backend.parse_action(backend_fn(system, transcript))
+            action = backend.parse_action(backend_fn(system, transcript, state["usage"]))
             malformed = 0
         except (ValueError, RuntimeError) as exc:
             malformed += 1
@@ -102,13 +111,44 @@ def run(contract_path: str, repo: str = ".", backend_fn=backend.chat) -> int:
             ok, reason = gate.check(contract, state, repo_path)
             record("observation", f"gate: {reason}")
             if ok:
-                state_file.write_text(json.dumps(state, indent=2))
                 print(reason)
-                return EXIT_RELEASED if reason == gate.RELEASED else 0
+                outcome = EXIT_RELEASED if reason == gate.RELEASED else 0
         state_file.write_text(json.dumps(state, indent=2))
-    print(f"aborted after {state['iterations']} iterations; see {log}")
-    return 1
+    state_file.write_text(json.dumps(state, indent=2))
+    if outcome is None:
+        print(f"aborted after {state['iterations']} iterations; see {log}")
+        outcome = 1
+    print(stats_line(contract, state))
+    return outcome
 
+
+def over_budget(contract: dict, usage: dict) -> str:
+    """Reason string when the token or cost cap is spent, else ''."""
+    max_tokens = contract.get("max_tokens")
+    if max_tokens and backend.total_tokens(usage) >= max_tokens:
+        return f"token budget spent: {backend.total_tokens(usage)}/{max_tokens}"
+    max_cost = contract.get("max_cost_usd")
+    if max_cost and usage.get("cost_usd", 0) >= max_cost:
+        return f"cost budget spent: ${usage['cost_usd']:.4f}/${max_cost}"
+    return ""
+
+
+def stats_line(contract: dict, state: dict) -> str:
+    usage = state.get("usage", {})
+    caps = []
+    if contract.get("max_tokens"):
+        caps.append(f"max {contract['max_tokens']}")
+    if contract.get("max_cost_usd"):
+        caps.append(f"max ${contract['max_cost_usd']}")
+    return (
+        f"stats: iterations {state['iterations']}/{contract.get('max_iterations', 40)}"
+        f" · calls {usage.get('calls', 0)}"
+        f" · tokens in {usage.get('input_tokens', 0)} out {usage.get('output_tokens', 0)}"
+        f" · cost ${usage.get('cost_usd', 0):.4f}"
+        + (f" ({', '.join(caps)})" if caps else "")
+        + f" · LOC {state['added_loc']}/{contract['loc_budget']}"
+        f" · denials {state['denials']} · gate failures {state['gate_failures']}"
+    )
 
 def main(argv=None, backend_fn=backend.chat) -> int:
     parser = argparse.ArgumentParser(

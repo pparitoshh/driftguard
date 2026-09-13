@@ -54,6 +54,12 @@ class ValidateTest(unittest.TestCase):
         bad = dict(VALID, test_cmd="pytest x{tests}")
         self.assertIn("{tests}", "; ".join(contract_mod.validate(bad)))
 
+    def test_reject_non_positive_token_and_cost_caps(self):
+        self.assertEqual(contract_mod.validate(dict(VALID, max_tokens=None, max_cost_usd=None)), [])
+        errors = "; ".join(contract_mod.validate(dict(VALID, max_tokens=0, max_cost_usd="1")))
+        self.assertIn("max_tokens must be a positive number", errors)
+        self.assertIn("max_cost_usd must be a positive number", errors)
+
     def test_reject_escaping_paths(self):
         for path in ("../evil.py", "/etc/passwd", "a/../../b.py"):
             bad = dict(VALID, files_allowed=VALID["files_allowed"] + [path])
