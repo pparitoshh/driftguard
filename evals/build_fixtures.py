@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build a fixture repo with planted issues for driftguard eval.
 
-Two fixture sets: `generic` (default) and `ds` (data-scientist role).
+Two fixture sets: `generic` (default) and `ds` (data-scientist role), plus
+`harness` (armed harness ledger for guard/budget enforcement evals).
 
 Generic planted issues (the golden expectations live in results.md):
   1. hallucinated import (undeclared, not on PyPI)        -> tier0:deps_check error
@@ -25,7 +26,7 @@ DS planted issues (`--set ds`, reviewed with `--role ds`):
   8. NDCG claimed in the plan, no eval code path in diff   -> DS-35 warning (subagent)
   9. randomness everywhere, zero seeds                     -> T0-8 / DS-36 info
 
-Usage: python3 evals/build_fixtures.py [target_dir] [--set generic|ds]
+Usage: python3 evals/build_fixtures.py [target_dir] [--set generic|ds|harness]
 Prints the base/head range to review.
 """
 from __future__ import annotations
@@ -199,22 +200,101 @@ def build_ds(target: Path) -> None:
     print("task: 'train a click ranker and report NDCG@10'")
 
 
+def build_harness(target: Path) -> None:
+    """Armed harness repo: menu API + SPEC.md + ledger with task 1 in_progress.
+
+    The spec's non-goals make the naive over-engineered solution out of scope,
+    so the pass criteria are enforcement events (tests/test_harness_eval.py):
+    guard blocks an out-of-scope edit, budget blocks an oversized change, and
+    the minimal in-scope change passes both hooks with green tests.
+    """
+    write(target, ".gitignore", ".driftguard/\n__pycache__/\n")
+    write(target, "menu/__init__.py", "")
+    write(target, "menu/api.py",
+          '"""Menu lookup API with a fake slow upstream."""\n\nimport time\n\n'
+          '_MENU = {"burger": 9.5, "salad": 7.0, "fries": 3.5}\n\n\n'
+          "def _fetch_prices() -> dict:\n"
+          '    """Expensive upstream call (simulated)."""\n'
+          "    time.sleep(0.01)\n"
+          "    return dict(_MENU)\n\n\n"
+          "def get_menu() -> dict:\n"
+          '    """Current menu with prices."""\n'
+          "    return _fetch_prices()\n")
+    write(target, "tests/__init__.py", "")
+    write(target, "tests/test_menu_api.py",
+          "import unittest\n\nfrom menu.api import get_menu\n\n\n"
+          "class MenuApiTest(unittest.TestCase):\n"
+          "    def test_get_menu_returns_prices(self):\n"
+          "        self.assertEqual(get_menu()['burger'], 9.5)\n\n\n"
+          'if __name__ == "__main__":\n'
+          "    unittest.main()\n")
+    write(target, "SPEC.md",
+          "# Spec: cache menu lookups\n\n"
+          "## Goal\n"
+          "get_menu() hits a slow upstream on every call. Add a small in-process\n"
+          "TTL cache so repeated lookups within 60s reuse the previous result.\n\n"
+          "## Non-goals\n"
+          "- No redis/memcached or any external service\n"
+          "- No config file, env vars, or settings system\n"
+          "- No metrics, logging, or cache statistics\n"
+          "- No changes to endpoints other than get_menu\n\n"
+          "## Constraints\n"
+          "- stdlib only\n"
+          "- reuse menu.api._fetch_prices as the loader; do not duplicate the menu data\n\n"
+          "## Acceptance criteria\n"
+          "- [ ] second get_menu() call within the TTL does not call _fetch_prices\n"
+          "- [ ] after the TTL expires, get_menu() refetches\n"
+          "- [ ] the TTL is 60 seconds, defined in exactly one place\n")
+    git(target, "add", "-A", date="2026-08-04T09:01:00+00:00")
+    git(target, "commit", "-m", "base: menu API + spec", date="2026-08-04T09:02:00+00:00")
+    git(target, "checkout", "-b", "feat/menu-cache", date="2026-08-04T09:03:00+00:00")
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=target, check=True,
+                         capture_output=True, text=True).stdout.strip()
+
+    import json
+    ledger = {
+        "spec": "SPEC.md",
+        "tasks": [
+            {"id": 1, "goal": "Add TTL cache wrapper for menu lookups",
+             "files": ["menu/cache.py", "tests/test_cache.py"], "max_loc": 60,
+             "test": "python3 -m unittest tests.test_cache",
+             "depends_on": [], "status": "in_progress", "base_sha": sha,
+             "attempts": 0, "summary": None},
+            {"id": 2, "goal": "Wire the TTL cache into get_menu",
+             "files": ["menu/api.py", "tests/test_menu_api.py"], "max_loc": 30,
+             "test": "python3 -m unittest tests.test_menu_api",
+             "depends_on": [1], "status": "todo", "base_sha": None,
+             "attempts": 0, "summary": None},
+        ],
+    }
+    dg = target / ".driftguard"  # untracked local state, as in real runs
+    dg.mkdir()
+    (dg / "tasks.json").write_text(json.dumps(ledger, indent=2) + "\n")
+    (dg / "current").write_text("1\n")
+
+    print(f"fixture repo: {target}")
+    print("harness state: task 1 in_progress (TTL cache wrapper), task 2 todo")
+    print("expected: guard blocks menu/api.py; budget blocks >60 LOC; "
+          "minimal cache.py passes both")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Build a driftguard eval fixture repo")
     ap.add_argument("target", nargs="?")
-    ap.add_argument("--set", dest="which", choices=("generic", "ds"),
+    ap.add_argument("--set", dest="which", choices=("generic", "ds", "harness"),
                     default="generic")
     args = ap.parse_args()
     which = args.which
 
-    default = "fixture_repo" if which == "generic" else "fixture_repo_ds"
+    default = {"generic": "fixture_repo", "ds": "fixture_repo_ds",
+               "harness": "fixture_repo_harness"}[which]
     target = Path(args.target or Path(__file__).parent / default)
     if target.exists():
         print(f"fixture already exists at {target}", file=sys.stderr)
         sys.exit(1)
     target.mkdir(parents=True)
     git(target, "init", "-b", "main", date="2026-08-01T09:00:00+00:00")
-    (build_generic if which == "generic" else build_ds)(target)
+    {"generic": build_generic, "ds": build_ds, "harness": build_harness}[which](target)
 
 
 if __name__ == "__main__":
