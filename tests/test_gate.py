@@ -77,6 +77,13 @@ class GateTest(unittest.TestCase):
         self.assertIn("test written after impl: thing.py", reason)
         self.assertIn("tdd:", self.learnings())
 
+    def test_unwritten_test_file_message_hints_module_form(self):
+        self.state["first_writes"] = {"thing.py": 1.0}
+        ok, reason = gate.check(CONTRACT, self.state, self.repo)
+        self.assertFalse(ok)
+        self.assertIn("was never written", reason)
+        self.assertIn("module form", reason)
+
     def test_missing_write_entries_block(self):
         self.state["first_writes"] = {"test_thing.py": 1.0}
         ok, _ = gate.check(CONTRACT, self.state, self.repo)

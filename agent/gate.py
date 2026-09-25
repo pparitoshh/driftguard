@@ -30,7 +30,13 @@ def check(contract: dict, state: dict, repo: Path) -> tuple[bool, str]:
         test_ts = state["first_writes"].get(test_file(contract))
         for impl in contract.get("files_create", []):
             impl_ts = state["first_writes"].get(impl)
-            if test_ts is None or impl_ts is None or impl_ts < test_ts:
+            if test_ts is None:
+                return _fail(
+                    state, repo, "tdd",
+                    f"test file {test_file(contract)} was never written before "
+                    f"impl {impl} (if your tests_required id is a dotted "
+                    "package path, use module form: test_x.Class.test_y)")
+            if impl_ts is None or impl_ts < test_ts:
                 return _fail(state, repo, "tdd", f"test written after impl: {impl}")
     if state["added_loc"] > contract["loc_budget"] * 1.5:
         return _fail(
