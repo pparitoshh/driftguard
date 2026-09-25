@@ -1,14 +1,14 @@
 ---
-description: Run the next harness task end-to-end (coder subagent → test → review → commit)
-argument-hint: ""
+description: Run the harness over the task ledger (per task: coder subagent → test → review → commit)
+argument-hint: "[--resume]"
 allowed-tools: Bash, Read, Write, Glob, Task, AskUserQuestion, SlashCommand
 ---
 
-# /driftguard:run — harness orchestrator (single task)
+# /driftguard:run — harness orchestrator
 
-You orchestrate; you **never write task code yourself**. The coder subagent
-writes code, hooks enforce its contract, you run the tests and the review.
-Keep only summaries in your context — full subagent output goes to
+You orchestrate; you **never write task code yourself**. Fresh coder subagent
+per task, hooks enforce its contract, you run the tests and the review. Keep
+only summaries in your context — full subagent output goes to
 `.driftguard/traces/`.
 
 `PLUGIN_SCRIPTS` = `${CLAUDE_PLUGIN_ROOT}/scripts` (if unset, resolve `scripts/`
@@ -17,55 +17,71 @@ from this command file's installed location). All `contract.py` calls run with
 
 ## 0. Preconditions
 
-- Ledger exists and is valid:
-  `python3 $PLUGIN_SCRIPTS/contract.py validate`
-  If it is missing, stop: the task list must be hand-written into
-  `.driftguard/tasks.json` (schema: `{"spec": "SPEC.md", "tasks": [{id, goal,
-  files, max_loc, test, depends_on, status, base_sha, attempts, summary}]}`)
-  and approved by the human before running.
+- Repo is git; `git status --porcelain` is clean, except untracked
+  `.driftguard/` entries.
 - You are on a feature branch — never run on `main`/`master` without explicit
   user consent (AskUserQuestion if `git branch --show-current` says so).
-- `git status --porcelain` is clean, except untracked `.driftguard/` entries.
+- Record `BRANCH_BASE` = `git merge-base HEAD origin/main` (fall back `main`,
+  then `HEAD` if no main exists) for the final review.
 
-## 1. Pick the task
+`--resume`: continue from the existing ledger — never re-run `done` tasks.
+First, repair interruption debris: delete a stale `.driftguard/current`, and
+reset any `in_progress` task to `todo` (`contract.py status <id> todo`). A
+`blocked` task stays blocked unless the user says otherwise.
+
+## 1. Task list (human gate)
+
+If `.driftguard/tasks.json` does not exist:
+1. Require `SPEC.md` at the repo root (missing → tell the user to run
+   `/driftguard:spec` first; stop).
+2. Spawn the **planner** subagent (Task tool, `agents/planner.md`) with the
+   SPEC.md path. It writes `.driftguard/tasks.json` via `contract.py`.
+3. `python3 $PLUGIN_SCRIPTS/contract.py validate` — invalid → show the
+   problems and stop (do not hand-fix contracts).
+4. Show the task list (id, goal, files, max_loc, test) and AskUserQuestion:
+   **Approve / Discard**. Never proceed without explicit Approve.
+
+If the ledger exists, `contract.py validate` it and skip the gate
+(the human approved it before, or `--resume`).
+
+## 2. Task loop
+
+Repeat until `python3 $PLUGIN_SCRIPTS/contract.py next` prints `null`:
+
+### 2.1 Arm
+
+`TASK` = that JSON, `ID` = its `id`. Then:
 
 ```bash
-python3 $PLUGIN_SCRIPTS/contract.py next
-```
-
-`null` → nothing runnable: report the ledger state (`contract.py show`) and stop.
-Otherwise `TASK` = that JSON, `ID` = its `id`.
-
-## 2. Arm the harness
-
-```bash
-BASE=$(git rev-parse HEAD)
+git rev-parse HEAD | xargs python3 $PLUGIN_SCRIPTS/contract.py base "$ID"
 echo "$ID" > .driftguard/current
 python3 $PLUGIN_SCRIPTS/contract.py status "$ID" in_progress
 ```
 
-Record `BASE`. From now until step 6 the guard and budget hooks are live.
+From now until the task commits or blocks, the guard and budget hooks are live.
 
-## 3. Run the coder subagent
+### 2.2 Run the coder subagent
 
 `mkdir -p .driftguard/traces/$ID`, then spawn the **coder** subagent (Task
-tool) with a prompt containing:
+tool, `agents/coder.md`) with a prompt containing:
 - the task contract JSON verbatim,
 - `SPEC` = the ledger's `spec` path,
 - a pointer to `.driftguard/rules.md` / `.driftguard/learnings.md` if present,
-- one line: "Follow agents/coder.md exactly. Write your final SUMMARY/TEST report only."
+- on a retry only: the failure findings from the previous attempt verbatim
+  (test tail or review findings) with "fix these; stay in the contract",
+- one line: "Follow agents/coder.md exactly. Write your final SUMMARY/TEST
+  report only."
 
-When it returns, write its full final message to `.driftguard/traces/$ID/coder.md`
-and keep only its `SUMMARY:` / `TEST:` lines in your context. If the report
-contains `BLOCKED:` → go to step 7 (blocked), do not retry.
+Write its full final message to `.driftguard/traces/$ID/coder.md`; keep only
+its `SUMMARY:` / `TEST:` lines. A `BLOCKED:` report → step 2.5 (do not retry
+a contract problem).
 
-## 4. Run the test yourself
+### 2.3 Run the test yourself
 
 Do not trust the coder's claim — run the contract's `test` command verbatim
-with `cwd` = repo root. Non-zero exit → go to step 7 (blocked) with the tail
-of the test output.
+with `cwd` = repo root. Non-zero exit → step 2.5 with the test output tail.
 
-## 5. Review the task diff
+### 2.4 Review the task diff
 
 The changes are uncommitted; snapshot the working tree into a dangling commit
 (moves no branch, touches neither HEAD nor files):
@@ -78,28 +94,50 @@ IDX=$(mktemp) && cp .git/index "$IDX" \
   ; rm -f "$IDX"; echo "$SNAP"
 ```
 
-Then run `/driftguard:review --base $BASE --head $SNAP --task "<task goal>"`.
-Overall verdict not `pass` → go to step 7 (blocked) with the findings.
+Then `/driftguard:review --base <base_sha> --head $SNAP --task "<task goal>"`
+(`base_sha` = the task's recorded base). Verdict not `pass` → step 2.5 with
+the findings. Verdict `pass` → step 2.6.
 
-## 6. Accept
+### 2.5 Failure: one fix wave, then blocked
+
+- `python3 $PLUGIN_SCRIPTS/contract.py show` → task's `attempts` is 0:
+  `contract.py attempt "$ID"`, then back to step 2.2 **with the findings**
+  (exactly one retry).
+- `attempts` ≥ 1: `contract.py status "$ID" blocked`, `rm -f
+  .driftguard/current`, and **stop the whole run**. Report the task, the
+  failure (test tail or findings), and the contract change that would unblock
+  it (more files, larger `max_loc`, a spec decision). Remaining tasks stay
+  `todo`; suggest `/driftguard:run --resume` after the human decides.
+
+### 2.6 Accept
 
 ```bash
 git add -A && git commit -m "<task goal> (driftguard task $ID)"
 python3 $PLUGIN_SCRIPTS/contract.py status "$ID" done
+python3 $PLUGIN_SCRIPTS/contract.py summary "$ID" "<coder summary, one line>"
 rm -f .driftguard/current
 ```
 
-(`.driftguard/` is gitignored, so `git add -A` adds only task files.) Report:
-task id, goal, test result, review verdict, commit sha, coder summary, LOC vs
-budget (`git diff --numstat $BASE HEAD`). Stop here — one task per run.
+(`.driftguard/` is gitignored, so `git add -A` adds only task files.) Report
+one line: task id, test result, review verdict, LOC vs budget
+(`git diff --numstat <base_sha> HEAD`). Continue the loop.
 
-## 7. Blocked
+## 3. Finish (human gate)
 
-```bash
-python3 $PLUGIN_SCRIPTS/contract.py status "$ID" blocked
-rm -f .driftguard/current
+When `next` prints `null`:
+1. `rm -f .driftguard/current` (safety).
+2. Run the repo's full test suite yourself. Failure → report and stop; the
+   per-task reviews passed, so this is a cross-task interaction.
+3. Final review: `/driftguard:review --base <BRANCH_BASE> --task "<SPEC.md
+   goal>"` over the whole branch.
+4. Present the summary and AskUserQuestion what to do next — **merge locally /
+   open a PR / leave the branch**:
+
+```
+Tasks: N done, M blocked (ids)
+LOC: X changed vs Y total budget
+Final review: <verdict> — <open findings, if any>
+Tests: full suite <pass/fail>
 ```
 
-Report why (coder's BLOCKED note, failing test tail, or review findings) and
-what contract change would unblock it: more files, larger `max_loc`, a spec
-decision. Leave the working tree as the coder left it; the human decides.
+Never merge or push without the human's explicit choice.

@@ -235,6 +235,33 @@ class CliTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("no task with id 99", err)
 
+    def test_attempt_increments(self):
+        self.write_ledger(ledger(task(1)))
+        rc, out, _ = self.run_cli("attempt", "1")
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["attempts"], 1)
+        rc, out, _ = self.run_cli("attempt", "1")
+        self.assertEqual(json.loads(out)["attempts"], 2)
+
+    def test_summary_and_base_set_fields(self):
+        self.write_ledger(ledger(task(1)))
+        rc, out, _ = self.run_cli("summary", "1", "added", "ttl", "cache")
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["summary"], "added ttl cache")
+        rc, out, _ = self.run_cli("base", "1", "abc123")
+        self.assertEqual(json.loads(out)["base_sha"], "abc123")
+        rc, out, _ = self.run_cli("show")
+        saved = json.loads(out)["tasks"][0]
+        self.assertEqual(saved["summary"], "added ttl cache")
+        self.assertEqual(saved["base_sha"], "abc123")
+
+    def test_mutations_reject_unknown_task(self):
+        self.write_ledger(ledger(task(1)))
+        for argv in (("attempt", "9"), ("summary", "9", "x"), ("base", "9", "abc")):
+            rc, _, err = self.run_cli(*argv)
+            self.assertEqual(rc, 1, argv)
+            self.assertIn("no task with id 9", err)
+
     def test_commands_refuse_invalid_ledger(self):
         self.write_ledger(ledger(task(1, goal="")))
         for argv in (("next",), ("show",), ("status", "1", "done")):

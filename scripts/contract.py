@@ -227,10 +227,18 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("validate", help="check the ledger, print all problems")
     sub.add_parser("next", help="print the next runnable task as JSON (null if none)")
+    sub.add_parser("show", help="pretty-print the ledger")
     sp = sub.add_parser("status", help="set a task's status")
     sp.add_argument("id", type=int)
     sp.add_argument("status", choices=STATUSES)
-    sub.add_parser("show", help="pretty-print the ledger")
+    sp = sub.add_parser("attempt", help="increment a task's attempt counter")
+    sp.add_argument("id", type=int)
+    sp = sub.add_parser("summary", help="set a task's summary text")
+    sp.add_argument("id", type=int)
+    sp.add_argument("text", nargs="+")
+    sp = sub.add_parser("base", help="record a task's base sha")
+    sp.add_argument("id", type=int)
+    sp.add_argument("sha")
     args = p.parse_args(argv)
 
     try:
@@ -252,18 +260,27 @@ def main(argv: list[str] | None = None) -> int:
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
         return 1
-    if args.cmd == "status":
-        try:
-            task = set_status(contract, args.id, args.status)
-        except KeyError as e:
-            print(f"error: {e}", file=sys.stderr)
-            return 1
-        save(contract, args.file)
-        emit(task)
-    elif args.cmd == "next":
+    if args.cmd == "next":
         emit(next_task(contract))
-    else:  # show
+        return 0
+    if args.cmd == "show":
         emit(contract)
+        return 0
+    # status | attempt | summary | base: mutate one task and persist
+    task = find_task(contract, args.id)
+    if task is None:
+        print(f"error: no task with id {args.id}", file=sys.stderr)
+        return 1
+    if args.cmd == "status":
+        task["status"] = args.status
+    elif args.cmd == "attempt":
+        task["attempts"] += 1
+    elif args.cmd == "base":
+        task["base_sha"] = args.sha
+    else:  # summary
+        task["summary"] = " ".join(args.text)
+    save(contract, args.file)
+    emit(task)
     return 0
 
 
