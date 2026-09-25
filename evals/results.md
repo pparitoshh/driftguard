@@ -45,6 +45,22 @@ clean base range (`main...main` returns an empty findings list). The four subage
 plants (2, 3, 7, 8) are methodology judgments with no deterministic signature — they are
 what `agents/ds-review.md` exists for, and are exercised in live runs.
 
+## Harness fixture — hook enforcement determinism
+
+Fixture: `python3 evals/build_fixtures.py <dir> --set harness` — a small menu
+API plus SPEC.md ("cache menu lookups") whose non-goals (no metrics, no config
+system, no external services) make the naive over-engineered solution out of
+scope. The ledger ships armed: task 1 (TTL cache wrapper, `max_loc` 60)
+`in_progress` with `base_sha` recorded. Automated in
+`tests/test_harness_eval.py`.
+
+| # | Scenario | Expected | Result (2026-09-25) |
+|---|---|---|---|
+| 1 | edit `menu/api.py` while task 1 allows only `menu/cache.py` + its test | guard **blocks** (exit 2), names allowlist | ✅ blocked, "outside the file allowlist" |
+| 2 | write 100-line `cache.py` (metrics/config-shaped over-build) | budget **blocks** (exit 2), shows count vs 60 | ✅ blocked, "101 lines changed … budget is 60" |
+| 3 | minimal in-scope cache + test (~45 LOC) | guard allows, budget allows, tests green | ✅ all pass |
+| 4 | final `/driftguard:review` of the compliant diff | verdict `pass` | not run in CI — host fan-out only |
+
 ## Live run — ai-chef `d2fa888...286ce95` ("feat: orchestrate ingestion with Prefect")
 
 Full artifact: [`runs/ai-chef-prefect-286ce95.md`](runs/ai-chef-prefect-286ce95.md).

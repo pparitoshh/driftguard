@@ -232,6 +232,49 @@ Optional spend caps on the contract, `--max-tokens N` and `--max-cost USD`
 (`max_tokens` and `max_cost_usd`), abort the run with exit 1 once they are reached,
 alongside `--max-iterations`.
 
+## Harness mode
+
+driftguard can also run the whole build, not just review it:
+
+```
+/driftguard:spec "add caching to menu API"   → SPEC.md          [you approve]
+/driftguard:run                              → tasks.json       [you approve]
+                                             → per task: coder subagent → test → review → commit
+                                             → branch review + summary  [you decide merge/PR]
+/driftguard:run --resume                     → continue an interrupted run
+```
+
+The orchestrator never writes code. Each task runs in a fresh `coder`
+subagent under a contract from `.driftguard/tasks.json` (file allowlist,
+`max_loc` budget, test command), and two hooks enforce it at tool level:
+`guard.py` (PreToolUse) blocks edits outside the task's files, `budget.py`
+(Stop/SubagentStop) blocks when the diff outgrows the budget. After the coder
+returns, the orchestrator runs the test itself and `/driftguard:review`s the
+task diff before committing; one fix wave is allowed, then the task is
+`blocked` and the run stops for a human decision.
+
+Exactly three human gates: **spec**, **task list**, **final merge**.
+
+State files (all local, gitignored):
+
+| File | Purpose |
+|---|---|
+| `SPEC.md` (repo root) | source of truth for intent |
+| `.driftguard/tasks.json` | task contracts + status (the ledger) |
+| `.driftguard/current` | active task id — **hooks are inert when absent** |
+| `.driftguard/traces/` | full subagent outputs and hook error log |
+
+To pause enforcement mid-run, delete `.driftguard/current`. To disable
+entirely, uninstall/disable the plugin (hooks are registered in
+`hooks/hooks.json`). Ledger CLI: `python3 scripts/contract.py
+validate|init|next|show|status|attempt|summary|base`.
+
+Design inspiration: [obra/superpowers](https://github.com/obra/superpowers)
+(spec interview, plan tasks, subagent-per-task, review-each-step). Harness
+mode adds what superpowers deliberately lacks: hard tool-level enforcement
+(file allowlist + LOC budget) and intent-drift review of each task diff
+against SPEC.md.
+
 ## End-to-end flow
 
 See [agentic_code.md](agentic_code.md): superpowers (design, plan) → `/driftguard:task_run` → `/driftguard:review` → finish. Written as an agent protocol that humans can read too.
