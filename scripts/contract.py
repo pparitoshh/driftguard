@@ -16,6 +16,7 @@ from common import emit
 
 STATUSES = ("todo", "in_progress", "review", "done", "blocked")
 DEFAULT_PATH = Path(".driftguard") / "tasks.json"
+CURRENT_PATH = Path(".driftguard") / "current"
 
 _TOP_KEYS = {"spec", "tests_excluded_from_budget", "tasks"}
 _TASK_KEYS = {
@@ -194,6 +195,26 @@ def set_status(contract: dict, task_id: int, status: str) -> dict:
         raise KeyError(f"no task with id {task_id}")
     task["status"] = status
     return task
+
+
+def active_task(root: str | Path = ".") -> dict | None:
+    """Task named by .driftguard/current under root; None when harness is off."""
+    current = Path(root) / CURRENT_PATH
+    if not current.exists():
+        return None
+    task_id = int(current.read_text().strip())
+    return find_task(load(Path(root) / DEFAULT_PATH), task_id)
+
+
+def log_hook_error(root: str | Path, message: str) -> None:
+    """Append to traces/hook-errors.log; never raises (hooks must not crash)."""
+    try:
+        log = Path(root) / ".driftguard" / "traces" / "hook-errors.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a") as f:
+            f.write(message.rstrip() + "\n")
+    except OSError:
+        pass
 
 
 # --- CLI ---------------------------------------------------------------------
