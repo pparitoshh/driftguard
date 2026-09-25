@@ -211,6 +211,31 @@ class CliTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("no ledger", err)
 
+    def run_cli_stdin(self, stdin: str, *argv) -> tuple[int, str, str]:
+        import unittest.mock as mock
+        out, err = io.StringIO(), io.StringIO()
+        with cwd(self.tmp.name), redirect_stdout(out), redirect_stderr(err), \
+                mock.patch("sys.stdin", io.StringIO(stdin)):
+            rc = contract.main(list(argv))
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_init_writes_valid_ledger(self):
+        rc, out, _ = self.run_cli_stdin(json.dumps(ledger(task(1))), "init")
+        self.assertEqual(rc, 0)
+        self.assertIn("ok", out)
+        rc, out, _ = self.run_cli("show")
+        self.assertEqual(json.loads(out)["tasks"][0]["id"], 1)
+
+    def test_init_rejects_invalid_and_malformed(self):
+        rc, out, _ = self.run_cli_stdin(json.dumps(ledger(task(1, goal=""))), "init")
+        self.assertEqual(rc, 1)
+        self.assertIn("problem(s)", out)
+        rc, _, err = self.run_cli_stdin("{oops", "init")
+        self.assertEqual(rc, 1)
+        self.assertIn("not valid JSON", err)
+        # nothing was written
+        self.assertFalse((Path(self.tmp.name) / ".driftguard" / "tasks.json").exists())
+
     def test_next_and_null(self):
         self.write_ledger(ledger(task(1)))
         rc, out, _ = self.run_cli("next")

@@ -225,6 +225,7 @@ def main(argv: list[str] | None = None) -> int:
         description="driftguard harness task ledger (.driftguard/tasks.json)")
     p.add_argument("--file", default=str(DEFAULT_PATH), help="ledger path")
     sub = p.add_subparsers(dest="cmd", required=True)
+    sp = sub.add_parser("init", help="create the ledger from JSON on stdin (validated)")
     sub.add_parser("validate", help="check the ledger, print all problems")
     sub.add_parser("next", help="print the next runnable task as JSON (null if none)")
     sub.add_parser("show", help="pretty-print the ledger")
@@ -240,6 +241,22 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("id", type=int)
     sp.add_argument("sha")
     args = p.parse_args(argv)
+
+    if args.cmd == "init":
+        try:
+            data = json.loads(sys.stdin.read())
+        except json.JSONDecodeError as e:
+            print(f"error: stdin is not valid JSON: {e}", file=sys.stderr)
+            return 1
+        problems = validate(data)
+        if problems:
+            print(f"stdin: {len(problems)} problem(s):")
+            for p in problems:
+                print(f"  - {p}")
+            return 1
+        save(data, args.file)
+        print(f"{args.file}: ok")
+        return 0
 
     try:
         contract = load(args.file)

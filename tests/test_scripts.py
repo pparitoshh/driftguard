@@ -72,6 +72,21 @@ class TestPlanResolve(RepoTestCase):
         self.assertEqual(out["source"], "plan-doc")
         self.assertIn("Build exactly one flag", out["text"])
 
+    def test_spec_md_in_chain_after_plan_md(self):
+        # harness writes SPEC.md at repo root; review must resolve it as plan-doc
+        self.commit_file("SPEC.md", "# Spec\nAdd caching to the menu API.\n", "add spec")
+        self.commit_file("app.py", "x = 1\n", "add app", "2026-08-02T10:00:00+00:00")
+        out = run_script("plan_resolve.py", "--repo", str(self.repo), "--base", "HEAD~1", "--head", "HEAD")
+        self.assertEqual(out["source"], "plan-doc")
+        self.assertIn("Add caching", out["text"])
+
+    def test_plan_md_beats_spec_md(self):
+        self.commit_file("PLAN.md", "# Plan\nplan wins.\n", "add plan")
+        self.commit_file("SPEC.md", "# Spec\nspec loses.\n", "add spec")
+        self.commit_file("app.py", "x = 1\n", "add app", "2026-08-02T10:00:00+00:00")
+        out = run_script("plan_resolve.py", "--repo", str(self.repo), "--base", "HEAD~1", "--head", "HEAD")
+        self.assertIn("plan wins", out["text"])
+
     def test_fallback_to_commits(self):
         self.commit_file("a.py", "x = 1\n", "first")
         self.commit_file("b.py", "y = 2\n", "feat: add the b module", "2026-08-02T10:00:00+00:00")

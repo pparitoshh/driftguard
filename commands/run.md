@@ -34,8 +34,9 @@ reset any `in_progress` task to `todo` (`contract.py status <id> todo`). A
 If `.driftguard/tasks.json` does not exist:
 1. Require `SPEC.md` at the repo root (missing → tell the user to run
    `/driftguard:spec` first; stop).
-2. Spawn the **planner** subagent (Task tool, `agents/planner.md`) with the
-   SPEC.md path. It writes `.driftguard/tasks.json` via `contract.py`.
+2. Spawn the **planner** subagent (Task tool, `agents/planner.md`) with
+   `SPEC` = the SPEC.md path and `CONTRACT_PY` = `$PLUGIN_SCRIPTS/contract.py`.
+   It writes `.driftguard/tasks.json` via `contract.py init`.
 3. `python3 $PLUGIN_SCRIPTS/contract.py validate` — invalid → show the
    problems and stop (do not hand-fix contracts).
 4. Show the task list (id, goal, files, max_loc, test) and AskUserQuestion:
